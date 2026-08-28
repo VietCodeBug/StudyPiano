@@ -2,6 +2,11 @@
 
 Ứng dụng hỗ trợ học và luyện tập Piano tự động (Offline, Native Android Kotlin, Jetpack Compose, Room Database, MIDI Engine).
 
+## 📥 Tải trực tiếp file APK để cài đặt
+
+- Link tải trực tiếp file APK đã build sẵn: [**Tải StudyPiano.apk (v1.0)**](release/StudyPiano.apk?raw=true)
+- Hoặc vào thư mục [`release/`](release/) và bấm tải file `StudyPiano.apk`.
+
 ## Hướng dẫn build cục bộ (Local Build)
 
 ### 1. Yêu cầu môi trường

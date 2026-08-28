@@ -1,0 +1,33 @@
+package com.ian.pianotrainer.domain.service
+
+import com.ian.pianotrainer.domain.model.ExerciseNote
+import com.ian.pianotrainer.domain.model.NoteResultType
+import com.ian.pianotrainer.domain.model.PracticeConfiguration
+import com.ian.pianotrainer.domain.model.PracticeResult
+import kotlinx.coroutines.flow.StateFlow
+
+data class PracticeEngineState(
+    val currentNoteIndex: Int = 0,
+    val totalNotes: Int = 0,
+    val currentExpectedNote: ExerciseNote? = null,
+    val correctNotesCount: Int = 0,
+    val wrongNotesCount: Int = 0,
+    val missedNotesCount: Int = 0,
+    val currentStreak: Int = 0,
+    val maxStreak: Int = 0,
+    val lastEvaluatedResult: NoteResultType? = null,
+    val lastPlayedNote: Int? = null,
+    val isFinished: Boolean = false,
+    val isPaused: Boolean = false
+)
+
+interface PracticeEngine {
+    val state: StateFlow<PracticeEngineState>
+
+    fun startPractice(configuration: PracticeConfiguration)
+    fun processPlayedNote(midiNote: Int, velocity: Int)
+    fun pause()
+    fun resume()
+    fun restart()
+    fun stop(): PracticeResult
+}

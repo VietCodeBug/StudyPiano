@@ -1,0 +1,207 @@
+<resources>
+    <string name="app_name">Piano Trainer</string>
+    
+    <!-- Navigation -->
+    <string name="nav_home">Trang chủ</string>
+    <string name="nav_learn">Học</string>
+    <string name="nav_practice">Luyện tập</string>
+    <string name="nav_my_songs">Bài của tôi</string>
+    <string name="nav_progress">Tiến độ</string>
+
+    <!-- Screen Titles -->
+    <string name="title_learn">Học</string>
+    <string name="title_practice">Luyện tập</string>
+    <string name="title_my_songs">Bài của tôi</string>
+    <string name="title_progress">Tiến độ</string>
+    <string name="title_device_connection">Kết nối đàn</string>
+    <string name="title_midi_diagnostic">Kiểm tra MIDI</string>
+    <string name="title_free_play">Chơi tự do</string>
+    <string name="title_course_detail">Chi tiết khóa học</string>
+    <string name="title_lesson_detail">Chi tiết bài học</string>
+    <string name="title_practice_setup">Chuẩn bị luyện tập</string>
+    <string name="title_practice_player">Luyện đàn</string>
+    <string name="title_practice_result">Kết quả buổi luyện</string>
+    <string name="title_settings">Cài đặt</string>
+
+    <!-- Home Screen -->
+    <string name="greeting_user">Chào Việt Anh 👋</string>
+    <string name="home_greeting">Việt Anh 👋</string>
+    <string name="home_subtitle">Chào buổi sáng,</string>
+    <string name="home_recommended_lesson">Đang học</string>
+    <string name="home_resume_learning">Tiếp tục</string>
+    <string name="streak_title">Chuỗi ngày luyện tập</string>
+    <string name="streak_days_format">%1$d ngày liên tục</string>
+    <string name="total_practice_time">Tổng thời gian luyện</string>
+    <string name="total_minutes_format">%1$d phút</string>
+    <string name="card_continue_learning">Tiếp tục học</string>
+    <string name="card_quick_practice">Luyện tập nhanh</string>
+    <string name="card_free_play">Chơi tự do</string>
+    <string name="card_recent_song">Bài nhạc gần đây</string>
+    <string name="piano_status_simulated">Đàn mô phỏng (Victor VT02)</string>
+    <string name="piano_status_disconnected">Chưa kết nối đàn</string>
+    <string name="piano_status_connected">Đã kết nối giả lập MIDI</string>
+    <string name="btn_connect_piano">Kết nối đàn</string>
+    <string name="btn_diagnostics">Kiểm tra MIDI</string>
+
+    <!-- Practice Goals -->
+    <string name="goal_note_recognition">Nhớ vị trí các nốt</string>
+    <string name="goal_rhythm">Luyện đúng nhịp</string>
+    <string name="goal_right_hand">Luyện tay phải</string>
+    <string name="goal_left_hand">Luyện tay trái</string>
+    <string name="goal_both_hands">Luyện phối hợp hai tay</string>
+    <string name="goal_custom">Bài tập tự chọn</string>
+
+    <!-- Practice Configuration -->
+    <string name="label_tempo">Tốc độ (BPM)</string>
+    <string name="label_bpm">Tốc độ (BPM)</string>
+    <string name="label_hand">Chọn tay luyện</string>
+    <string name="hand_right">Tay phải</string>
+    <string name="hand_left">Tay trái</string>
+    <string name="hand_both">Cả hai tay</string>
+    <string name="label_practice_mode">Chế độ luyện</string>
+    <string name="mode_wait_for_note">Chờ đánh đúng</string>
+    <string name="mode_in_tempo">Chạy theo nhịp</string>
+    <string name="label_display_mode">Kiểu hiển thị</string>
+    <string name="display_falling_notes">Nốt rơi</string>
+    <string name="display_sheet_music">Khuông nhạc</string>
+    <string name="btn_start_practice">Bắt đầu luyện</string>
+    <string name="practice_start_button">Bắt đầu luyện tập</string>
+    <string name="practice_mode_label">Chế độ luyện tập</string>
+    <string name="practice_hand_label">Chọn tay luyện</string>
+    <string name="practice_display_mode_label">Kiểu hiển thị</string>
+    <string name="practice_quick_drills">Luyện nhanh</string>
+    <string name="practice_quit_title">Thoát luyện tập?</string>
+    <string name="practice_quit_message">Bạn có chắc chắn muốn dừng phiên luyện tập?</string>
+    <string name="practice_finish_button">Kết thúc</string>
+    <string name="practice_resume_button">Tiếp tục</string>
+
+    <!-- My Songs -->
+    <string name="btn_import_midi">Nhập file MIDI</string>
+    <string name="my_songs_empty">Chưa có bài hát nào được lưu.</string>
+    <string name="my_songs_empty_desc">Nhấn \"Nhập file MIDI\" để thêm bài tập vào danh sách.</string>
+    <string name="midi_import_phase2_note">Tính năng nhập file MIDI thực tế từ bộ nhớ thiết bị sẽ khả dụng trong Giai đoạn 2.</string>
+    <string name="songs_import_title">Nhập file MIDI</string>
+    <string name="songs_import_phase2_note">Tính năng nhập file MIDI thực tế từ bộ nhớ thiết bị sẽ khả dụng trong Giai đoạn 2.</string>
+    <string name="songs_import_button">Nhập file MIDI</string>
+    <string name="songs_search_placeholder">Tìm kiếm bài hát...</string>
+    <string name="songs_empty_title">Chưa có bài hát nào</string>
+    <string name="songs_empty_description">Nhấn Nhập file MIDI để thêm bài vào thư viện.</string>
+    <string name="btn_practice_song">Luyện bài</string>
+    <string name="btn_delete_song">Xóa</string>
+    <string name="dialog_delete_title">Xác nhận xóa</string>
+    <string name="dialog_delete_message">Bạn có chắc chắn muốn xóa bài \"%1$s\" không?</string>
+
+    <!-- Progress Screen -->
+    <string name="progress_total_time">Tổng thời gian</string>
+    <string name="progress_total_practice_time">Tổng thời gian</string>
+    <string name="progress_streak_days">Chuỗi ngày</string>
+    <string name="progress_average_accuracy">Độ chính xác TB</string>
+    <string name="progress_sessions_count">Số buổi luyện</string>
+    <string name="progress_avg_accuracy">Độ chính xác trung bình</string>
+    <string name="progress_best_bpm">BPM tốt nhất</string>
+    <string name="progress_completed_lessons">Số bài hoàn thành</string>
+    <string name="progress_recent_history">Lịch sử luyện tập gần đây</string>
+    <string name="progress_no_sessions">Chưa có buổi luyện nào được ghi lại.</string>
+
+    <!-- Device Connection Screen -->
+    <string name="device_connection_title">Kết nối đàn Victor VT02</string>
+    <string name="device_connection_desc">Quản lý kết nối với đàn Piano điện của bạn (Ví dụ: Victor VT02 88 phím).</string>
+    <string name="device_status_label">Trạng thái: %1$s</string>
+    <string name="device_status_disconnected">Chưa kết nối</string>
+    <string name="device_status_scanning">Đang quét thiết bị giả lập…</string>
+    <string name="device_status_connecting">Đang kết nối…</string>
+    <string name="device_status_connected">Đã kết nối (Giả lập)</string>
+    <string name="device_status_error">Lỗi kết nối</string>
+    <string name="device_connected">Đã kết nối</string>
+    <string name="device_connecting">Đang kết nối...</string>
+    <string name="device_disconnected">Chưa kết nối</string>
+    <string name="device_connection_failed">Lỗi kết nối</string>
+    <string name="device_victor_vt02_tip">Đảm bảo bạn đã bật Bluetooth trên cây đàn Victor VT02.</string>
+    <string name="device_disconnect_button">Ngắt kết nối</string>
+    <string name="device_scan_button">Quét tìm thiết bị</string>
+    <string name="btn_scan_devices">Quét thiết bị giả lập</string>
+    <string name="device_audio_warning">Lưu ý quan trọng: Tín hiệu \"Piano Audio\" qua Bluetooth chỉ truyền âm thanh, không truyền nốt MIDI. Để nhận diện phím bấm, cần kết nối cổng Bluetooth MIDI hoặc cáp USB MIDI chuyên dụng.</string>
+    <string name="device_simulated_notice">Tất cả thiết bị trong danh sách này là thiết bị mô phỏng (Simulated Mock) cho Giai đoạn 1.</string>
+    <string name="device_type_ble_midi">Bluetooth MIDI (Giả lập)</string>
+    <string name="device_type_usb_midi">USB MIDI (Giả lập)</string>
+
+    <!-- Diagnostics -->
+    <string name="diag_clear_logs">Xóa nhật ký</string>
+    <string name="diag_velocity">Lực đánh (Velocity)</string>
+    <string name="diag_event_log">Nhật ký sự kiện MIDI</string>
+
+    <!-- Free Play Screen -->
+    <string name="free_play_input_mode">Nguồn đầu vào:</string>
+    <string name="input_virtual_piano">Đàn ảo trên màn hình</string>
+    <string name="input_physical_piano">Đàn piano vật lý</string>
+    <string name="physical_piano_unavailable">Chưa khả dụng trong phiên bản hiện tại.</string>
+    <string name="current_note_label">Nốt đang đánh:</string>
+    <string name="midi_number_label">Mã MIDI: %1$d</string>
+    <string name="velocity_label">Lực đánh (Velocity): %1$d</string>
+    <string name="note_history_label">Lịch sử nốt vừa đánh:</string>
+    <string name="btn_clear_history">Xóa lịch sử</string>
+    <string name="metronome_placeholder">Máy đếm nhịp (Metronome): Đang chuẩn bị</string>
+
+    <!-- Practice Player -->
+    <string name="player_target_note">Nốt cần đánh:</string>
+    <string name="player_progress_format">Tiến độ: %1$d / %2$d</string>
+    <string name="btn_pause">Tạm dừng</string>
+    <string name="btn_resume">Tiếp tục</string>
+    <string name="btn_restart">Luyện lại từ đầu</string>
+    <string name="btn_exit">Thoát</string>
+    <string name="note_correct">Đúng!</string>
+    <string name="note_wrong">Sai, thử lại!</string>
+
+    <!-- Practice Result -->
+    <string name="result_total_score">Tổng điểm</string>
+    <string name="result_accuracy">Độ chính xác</string>
+    <string name="result_correct_notes">Nốt đúng</string>
+    <string name="result_wrong_notes">Nốt sai</string>
+    <string name="result_missed_notes">Nốt bỏ lỡ</string>
+    <string name="result_early_notes">Đánh sớm</string>
+    <string name="result_late_notes">Đánh muộn</string>
+    <string name="result_max_streak">Chuỗi đúng dài nhất</string>
+    <string name="result_streak">Chuỗi đúng nhất</string>
+    <string name="result_duration">Thời gian</string>
+    <string name="result_retry_button">Luyện tập lại</string>
+    <string name="result_home_button">Về trang chủ</string>
+    <string name="btn_practice_again">Luyện lại</string>
+    <string name="btn_back_home">Về trang chủ</string>
+    <string name="result_saved_success">Đã lưu kết quả buổi luyện!</string>
+
+    <!-- Settings -->
+    <string name="settings_note_naming">Quy ước tên nốt</string>
+    <string name="naming_cde">C – D – E (Ký hiệu quốc tế)</string>
+    <string name="naming_doremi">Đô – Rê – Mi (Ký hiệu tiếng Việt)</string>
+    <string name="settings_default_display">Kiểu hiển thị mặc định</string>
+    <string name="settings_virtual_sound">Âm thanh piano ảo</string>
+    <string name="settings_metronome_volume">Âm lượng máy đếm nhịp</string>
+    <string name="settings_default_bpm">BPM mặc định</string>
+    <string name="settings_default_hand">Tay luyện mặc định</string>
+    <string name="settings_reset_data">Khôi phục dữ liệu mẫu ban đầu</string>
+    <string name="settings_reset_dialog_title">Xác nhận khôi phục</string>
+    <string name="settings_reset_dialog_msg">Thao tác này sẽ đặt lại các bài mẫu và cài đặt ban đầu. Bạn có muốn tiếp tục?</string>
+    <string name="settings_app_info">Thông tin ứng dụng</string>
+    <string name="app_version_info">Piano Trainer v1.0 (Giai đoạn 1) - Tự học đàn cá nhân</string>
+    <string name="app_developer_note">Dành riêng cho Việt Anh và cây đàn Victor VT02 88 phím.</string>
+
+    <!-- Common UI -->
+    <string name="action_back">Quay lại</string>
+    <string name="action_decrease">Giảm</string>
+    <string name="action_increase">Tăng</string>
+    <string name="action_confirm">Xác nhận</string>
+    <string name="action_cancel">Hủy bỏ</string>
+    <string name="action_retry">Thử lại</string>
+    <string name="state_error_title">Đã xảy ra lỗi</string>
+    <string name="state_error_message">Không thể tải dữ liệu, vui lòng thử lại sau.</string>
+    <string name="btn_confirm">Xác nhận</string>
+    <string name="btn_cancel">Hủy bỏ</string>
+    <string name="btn_ok">Đồng ý</string>
+    <string name="btn_close">Đóng</string>
+    <string name="btn_continue">Tiếp tục</string>
+    <string name="btn_back">Quay lại</string>
+    <string name="state_loading">Đang tải dữ liệu…</string>
+    <string name="state_error">Đã xảy ra lỗi khi tải dữ liệu</string>
+    <string name="state_retry">Thử lại</string>
+    <string name="state_empty">Chưa có dữ liệu</string>
+</resources>

@@ -1,0 +1,6 @@
+{
+  "name": "Piano Trainer",
+  "description": "Ứng dụng tự học piano cá nhân cho người mới bắt đầu với giáo trình trực quan, luyện tập nốt rơi & khuông nhạc, và giả lập MIDI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

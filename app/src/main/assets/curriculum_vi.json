@@ -1,0 +1,309 @@
+{
+  "courses": [
+    {
+      "id": "course_1_intro",
+      "title": "1. Làm quen với đàn piano",
+      "description": "Tìm hiểu về cấu tạo bàn phím 88 phím, tư thế ngồi chuẩn và nhận biết nốt Đô trung (Middle C - C4).",
+      "difficulty": "Cơ bản",
+      "lessons": [
+        {
+          "id": "lesson_1_1_posture",
+          "title": "Tư thế ngồi & vị trí tay",
+          "objective": "Ngồi thẳng lưng, thả lỏng vai và khum tròn ngón tay như đang cầm quả trứng.",
+          "description": "Tư thế chuẩn giúp bạn không bị mỏi khi chơi đàn lâu và kiểm soát lực ngón tay tốt hơn. Ngồi ở nửa trước ghế, bàn chân đặt phẳng trên sàn.",
+          "estimatedDurationMinutes": 5,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60],
+          "exercise": {
+            "id": "ex_1_1",
+            "title": "Tìm nốt Đô trung (C4)",
+            "defaultBpm": 60,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_1_2_black_keys",
+          "title": "Nhóm phím đen (2 phím & 3 phím)",
+          "objective": "Nhận biết các cụm 2 phím đen và 3 phím đen trên toàn bộ 88 phím.",
+          "description": "Nốt Đô (C) luôn nằm ngay bên trái của cụm 2 phím đen. Hãy tìm cụm 2 phím đen ở giữa đàn Victor VT02 để thấy Đô trung (C4).",
+          "estimatedDurationMinutes": 8,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 62, 64],
+          "exercise": {
+            "id": "ex_1_2",
+            "title": "Đánh thử C4, D4, E4",
+            "defaultBpm": 60,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_2_notes",
+      "title": "2. Vị trí các nốt nhạc",
+      "description": "Học thuộc tên 7 nốt nhạc cơ bản C-D-E-F-G-A-B (Đô-Rê-Mi-Pha-Son-La-Si) quanh quãng 4.",
+      "difficulty": "Cơ bản",
+      "lessons": [
+        {
+          "id": "lesson_2_1_c_d_e",
+          "title": "Ba nốt đầu tiên: C, D, E",
+          "objective": "Ghi nhớ và đánh chính xác 3 nốt Đô, Rê, Mi bằng ngón 1, 2, 3.",
+          "description": "Nốt C (Đô) ở cạnh cụm 2 phím đen, D (Rê) ở giữa 2 phím đen, E (Mi) ở bên phải 2 phím đen.",
+          "estimatedDurationMinutes": 10,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 62, 64],
+          "exercise": {
+            "id": "ex_2_1",
+            "title": "Luyện 3 nốt C - D - E",
+            "defaultBpm": 65,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_2_2_f_g_a_b",
+          "title": "Cụm nốt F, G, A, B",
+          "objective": "Nhận biết 4 nốt quanh cụm 3 phím đen: Pha, Son, La, Si.",
+          "description": "F (Pha) nằm bên trái cụm 3 phím đen. B (Si) nằm bên phải cụm 3 phím đen. G (Son) và A (La) nằm giữa các phím đen.",
+          "estimatedDurationMinutes": 12,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [65, 67, 69, 71],
+          "exercise": {
+            "id": "ex_2_2",
+            "title": "Luyện chuỗi F - G - A - B",
+            "defaultBpm": 60,
+            "notes": [
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 69, "noteName": "A4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 71, "noteName": "B4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 72, "noteName": "C5", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_3_fingers",
+      "title": "3. Số ngón tay",
+      "description": "Quy ước ngón tay quốc tế từ 1 đến 5 (Ngón cái là 1, ngón út là 5).",
+      "difficulty": "Cơ bản",
+      "lessons": [
+        {
+          "id": "lesson_3_1_finger_numbers",
+          "title": "Quy ước ngón tay 1 - 2 - 3 - 4 - 5",
+          "objective": "Hiểu và nhớ ký hiệu số ngón tay cho cả hai bàn tay.",
+          "description": "Ngón 1 = Ngón cái, Ngón 2 = Ngón trỏ, Ngón 3 = Ngón giữa, Ngón 4 = Ngón áp út, Ngón 5 = Ngón út.",
+          "estimatedDurationMinutes": 7,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 62, 64, 65, 67],
+          "exercise": {
+            "id": "ex_3_1",
+            "title": "5 ngón tay trên 5 nốt C-D-E-F-G",
+            "defaultBpm": 60,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_4_right_hand",
+      "title": "4. Luyện tay phải",
+      "description": "Các bài tập phối hợp độc lập ngón tay phải từ C4 đến G4.",
+      "difficulty": "Dễ",
+      "lessons": [
+        {
+          "id": "lesson_4_1_rh_scale_step",
+          "title": "Bước ngón liền bậc tay phải",
+          "objective": "Di chuyển ngón tay phải mượt mà từ C4 lên G4 rồi lùi về C4.",
+          "description": "Giữ cổ tay mềm mại, ấn phím dứt khoát và nhấc ngón nhẹ nhàng.",
+          "estimatedDurationMinutes": 10,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 62, 64, 65, 67],
+          "exercise": {
+            "id": "ex_4_1",
+            "title": "Lên dốc xuống dốc",
+            "defaultBpm": 70,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_4_2_rh_skips",
+          "title": "Nhảy quãng 3 tay phải",
+          "objective": "Luyện độc lập ngón 1-3 và 2-4 khi chơi cách nốt (C-E-D-F-E-G).",
+          "description": "Cách nốt giúp mở rộng độ linh hoạt của từng ngón tay.",
+          "estimatedDurationMinutes": 12,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 64, 62, 65, 64, 67],
+          "exercise": {
+            "id": "ex_4_2",
+            "title": "Nhảy quãng C-E-D-F-E-G",
+            "defaultBpm": 60,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_5_left_hand",
+      "title": "5. Luyện tay trái",
+      "description": "Tập luyện sức mạnh và sự dẻo dai của tay trái ở quãng C3 - G3.",
+      "difficulty": "Dễ",
+      "lessons": [
+        {
+          "id": "lesson_5_1_lh_scale",
+          "title": "5 ngón tay trái cơ bản (C3 - G3)",
+          "objective": "Tay trái ngón 5 (ngón út) đặt tại C3, ngón 1 (ngón cái) đặt tại G3.",
+          "description": "Tay trái thường dùng để giữ bè đệm hoặc hợp âm nền bass. Luyện ngón 5 tay trái bấm đủ lực.",
+          "estimatedDurationMinutes": 10,
+          "handMode": "LEFT",
+          "targetMidiNotes": [48, 50, 52, 53, 55],
+          "exercise": {
+            "id": "ex_5_1",
+            "title": "Đi bè trầm tay trái",
+            "defaultBpm": 60,
+            "notes": [
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 1.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 50, "noteName": "D3", "durationBeats": 1.0, "fingerNumber": 4, "hand": "LEFT" },
+              { "midiNote": 52, "noteName": "E3", "durationBeats": 1.0, "fingerNumber": 3, "hand": "LEFT" },
+              { "midiNote": 53, "noteName": "F3", "durationBeats": 1.0, "fingerNumber": 2, "hand": "LEFT" },
+              { "midiNote": 55, "noteName": "G3", "durationBeats": 2.0, "fingerNumber": 1, "hand": "LEFT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_6_both_hands",
+      "title": "6. Phối hợp hai tay",
+      "description": "Kết hợp hai tay đánh luân phiên và đồng thời.",
+      "difficulty": "Trung bình",
+      "lessons": [
+        {
+          "id": "lesson_6_1_parallel",
+          "title": "Hai tay song song",
+          "objective": "Tay trái C3-G3 và Tay phải C4-G4 đánh luân phiên chuyển giao.",
+          "description": "Bắt đầu với nhịp chậm 50 BPM để kiểm soát sự tập trung của cả 2 bán cầu não.",
+          "estimatedDurationMinutes": 15,
+          "handMode": "BOTH",
+          "targetMidiNotes": [48, 60, 52, 64, 55, 67],
+          "exercise": {
+            "id": "ex_6_1",
+            "title": "Đối thoại hai tay",
+            "defaultBpm": 55,
+            "notes": [
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 1.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 52, "noteName": "E3", "durationBeats": 1.0, "fingerNumber": 3, "hand": "LEFT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 55, "noteName": "G3", "durationBeats": 1.0, "fingerNumber": 1, "hand": "LEFT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_7_rhythm",
+      "title": "7. Làm quen với nhịp",
+      "description": "Hiểu giá trị nốt đen (1 phách), nốt trắng (2 phách) và nốt tròn (4 phách).",
+      "difficulty": "Cơ bản",
+      "lessons": [
+        {
+          "id": "lesson_7_1_note_values",
+          "title": "Nốt đen và nốt trắng",
+          "objective": "Giữ đúng trường độ phách nhịp khi đánh nốt.",
+          "description": "Nốt đen gõ 1 nhịp, nốt trắng giữ ngân dài bằng 2 nhịp gõ metronome.",
+          "estimatedDurationMinutes": 10,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 62, 64],
+          "exercise": {
+            "id": "ex_7_1",
+            "title": "Luyện nhịp 4/4 đơn giản",
+            "defaultBpm": 60,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 2.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_8_first_song",
+      "title": "8. Bài nhạc đầu tiên",
+      "description": "Thực hành bài hát truyền thống ngắn gọn để tự tin hoàn thành bài hoàn chỉnh.",
+      "difficulty": "Dễ",
+      "lessons": [
+        {
+          "id": "lesson_8_1_ode_to_joy",
+          "title": "Ode to Joy (Khải hoàn ca - Beethoven)",
+          "objective": "Chơi trọn vẹn đoạn điệp khúc kinh điển bằng tay phải.",
+          "description": "Bài học đánh dấu cột mốc hoàn thành giai đoạn vỡ lòng của bạn. Chúc mừng Việt Anh!",
+          "estimatedDurationMinutes": 20,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [64, 65, 67, 62, 60],
+          "exercise": {
+            "id": "ex_8_1",
+            "title": "Ode to Joy - Đoạn 1",
+            "defaultBpm": 65,
+            "notes": [
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 2.0, "fingerNumber": 2, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

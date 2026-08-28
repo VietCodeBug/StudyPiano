@@ -111,7 +111,7 @@ fun PracticeModeSelector(
                 val isSelected = (mode == selectedMode)
                 val label = when (mode) {
                     PracticeMode.WAIT_FOR_NOTE -> stringResource(R.string.mode_wait_for_note)
-                    PracticeMode.IN_TEMPO -> stringResource(R.string.mode_in_tempo)
+                    PracticeMode.RHYTHM -> stringResource(R.string.mode_in_tempo)
                 }
 
                 Box(

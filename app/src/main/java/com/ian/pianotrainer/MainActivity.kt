@@ -21,6 +21,7 @@ import androidx.navigation.navArgument
 import com.ian.pianotrainer.app.PianoTrainerApplication
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoTrainerTheme
+import com.ian.pianotrainer.domain.model.HandMode
 import com.ian.pianotrainer.feature.device.DeviceConnectionScreen
 import com.ian.pianotrainer.feature.device.DeviceViewModel
 import com.ian.pianotrainer.feature.diagnostics.MidiDiagnosticScreen
@@ -151,7 +152,8 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.Practice.route) {
                             val viewModel: PracticeViewModel = viewModel(
                                 factory = PracticeViewModel.Factory(
-                                    settingsRepository = appContainer.settingsRepository
+                                    settingsRepository = appContainer.settingsRepository,
+                                    exerciseRepository = appContainer.exerciseRepository
                                 )
                             )
                             PracticeScreen(
@@ -292,22 +294,22 @@ class MainActivity : ComponentActivity() {
                             val title = backStackEntry.arguments?.getString("title") ?: "Luyện tập"
                             val sourceType = backStackEntry.arguments?.getString("sourceType") ?: "DRILL"
                             val sourceId = backStackEntry.arguments?.getString("sourceId") ?: ""
-                            val handMode = backStackEntry.arguments?.getString("handMode") ?: "RIGHT"
-                            val displayMode = backStackEntry.arguments?.getString("displayMode") ?: "FALLING_NOTES"
-                            val bpm = backStackEntry.arguments?.getInt("bpm") ?: 60
+                            val handModeStr = backStackEntry.arguments?.getString("handMode") ?: "RIGHT"
+                            val initialHand = runCatching { HandMode.valueOf(handModeStr) }.getOrDefault(HandMode.RIGHT)
+                            val initialBpm = backStackEntry.arguments?.getInt("bpm") ?: 60
 
                             val viewModel: PracticePlayerViewModel = viewModel(
                                 factory = PracticePlayerViewModel.Factory(
                                     title = title,
                                     sourceType = sourceType,
                                     sourceId = sourceId,
-                                    handMode = handMode,
-                                    displayMode = displayMode,
-                                    bpm = bpm,
+                                    initialHand = initialHand,
+                                    initialBpm = initialBpm,
                                     practiceEngine = appContainer.practiceEngine,
                                     midiInput = appContainer.midiInput,
                                     metronomeController = appContainer.metronomeController,
                                     curriculumRepository = appContainer.curriculumRepository,
+                                    exerciseRepository = appContainer.exerciseRepository,
                                     songRepository = appContainer.songRepository,
                                     progressRepository = appContainer.progressRepository,
                                     settingsRepository = appContainer.settingsRepository
@@ -363,9 +365,11 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.FreePlay.route) {
                             val viewModel: FreePlayViewModel = viewModel(
                                 factory = FreePlayViewModel.Factory(
+                                    context = this@MainActivity,
                                     midiInput = appContainer.midiInput,
                                     metronomeController = appContainer.metronomeController,
-                                    settingsRepository = appContainer.settingsRepository
+                                    settingsRepository = appContainer.settingsRepository,
+                                    freePlayRepository = appContainer.freePlayRepository
                                 )
                             )
                             FreePlayScreen(

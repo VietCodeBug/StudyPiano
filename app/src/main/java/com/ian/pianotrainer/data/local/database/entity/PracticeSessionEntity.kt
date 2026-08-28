@@ -24,7 +24,11 @@ data class PracticeSessionEntity(
     val missedNotes: Int,
     val earlyNotes: Int,
     val lateNotes: Int,
-    val accuracy: Float
+    val accuracy: Float,
+    val endedAt: Long? = null,
+    val pausedDurationMs: Long = 0L,
+    val sessionStatus: String = "COMPLETED", // IN_PROGRESS, COMPLETED, CANCELLED
+    val resumeCheckpointMs: Long? = null
 )
 
 fun PracticeSessionEntity.toDomainModel(): PracticeSession {
@@ -44,7 +48,8 @@ fun PracticeSessionEntity.toDomainModel(): PracticeSession {
         missedNotes = missedNotes,
         earlyNotes = earlyNotes,
         lateNotes = lateNotes,
-        accuracy = accuracy
+        accuracy = accuracy,
+        noteResults = emptyList()
     )
 }
 
@@ -65,6 +70,9 @@ fun PracticeSession.toEntity(): PracticeSessionEntity {
         missedNotes = missedNotes,
         earlyNotes = earlyNotes,
         lateNotes = lateNotes,
-        accuracy = accuracy
+        accuracy = accuracy,
+        endedAt = startedAt + durationMs,
+        pausedDurationMs = 0L,
+        sessionStatus = "COMPLETED"
     )
 }

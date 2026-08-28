@@ -1,5 +1,8 @@
 package com.ian.pianotrainer.feature.mysongs
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,15 +21,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -35,9 +39,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -76,16 +84,44 @@ fun MySongsScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var showImportInfoDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    if (showImportInfoDialog) {
+    var songToDelete by remember { mutableStateOf<ImportedSong?>(null) }
+
+    val midiPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.importMidiFromUri(it, context)
+        }
+    }
+
+    LaunchedEffect(uiState.feedbackMessage) {
+        uiState.feedbackMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearFeedback()
+        }
+    }
+
+    LaunchedEffect(uiState.errorMessage) {
+        uiState.errorMessage?.let { error ->
+            snackbarHostState.showSnackbar(error)
+            viewModel.clearFeedback()
+        }
+    }
+
+    if (songToDelete != null) {
         ConfirmationDialog(
-            title = stringResource(R.string.songs_import_title),
-            message = stringResource(R.string.songs_import_phase2_note),
-            confirmText = "Đã hiểu",
-            dismissText = "Đóng",
-            onConfirm = { showImportInfoDialog = false },
-            onDismiss = { showImportInfoDialog = false }
+            title = "Xác nhận xóa bài nhạc",
+            message = "Bạn có chắc chắn muốn xóa bài \"${songToDelete?.displayName}\" khỏi thư viện không?",
+            confirmText = "Xóa",
+            dismissText = "Hủy",
+            onConfirm = {
+                songToDelete?.let { viewModel.deleteSong(it.id) }
+                songToDelete = null
+            },
+            onDismiss = { songToDelete = null }
         )
     }
 
@@ -94,19 +130,34 @@ fun MySongsScreen(
             AppTopBar(
                 title = stringResource(R.string.title_my_songs),
                 actions = {
-                    IconButton(
-                        onClick = { showImportInfoDialog = true },
-                        modifier = Modifier.testTag("import_song_action_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.UploadFile,
-                            contentDescription = stringResource(R.string.songs_import_button),
-                            tint = PianoPrimary
+                    if (uiState.isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(end = 8.dp),
+                            color = PianoPrimary,
+                            strokeWidth = 2.dp
                         )
+                    } else {
+                        IconButton(
+                            onClick = {
+                                midiPickerLauncher.launch(
+                                    arrayOf("audio/midi", "audio/mid", "audio/x-midi", "application/x-midi", "*/*")
+                                )
+                            },
+                            modifier = Modifier.testTag("import_song_action_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.UploadFile,
+                                contentDescription = stringResource(R.string.songs_import_button),
+                                tint = PianoPrimary
+                            )
+                        }
                     }
                 }
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = PianoBackground,
         modifier = modifier.testTag("my_songs_screen")
     ) { innerPadding ->
@@ -127,19 +178,26 @@ fun MySongsScreen(
                     onValueChange = viewModel::onSearchQueryChanged,
                     placeholder = { Text(stringResource(R.string.songs_search_placeholder)) },
                     leadingIcon = {
-                        Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = PianoTextSecondary)
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = PianoTextSecondary
+                        )
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("song_search_input"),
+                    singleLine = true,
                     shape = PianoShapes.medium,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = PianoSurface,
                         unfocusedContainerColor = PianoSurface,
                         focusedBorderColor = PianoPrimary,
-                        unfocusedBorderColor = PianoOutline
+                        unfocusedBorderColor = PianoOutline,
+                        focusedTextColor = PianoTextPrimary,
+                        unfocusedTextColor = PianoTextPrimary,
+                        unfocusedPlaceholderColor = PianoTextSecondary
                     ),
-                    singleLine = true
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("search_song_input")
                 )
 
                 Row(
@@ -150,7 +208,7 @@ fun MySongsScreen(
                     FilterChip(
                         selected = uiState.showFavoritesOnly,
                         onClick = viewModel::toggleFavoritesFilter,
-                        label = { Text("Chỉ bài yêu thích") },
+                        label = { Text(stringResource(R.string.songs_filter_favorites)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = if (uiState.showFavoritesOnly) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -159,11 +217,12 @@ fun MySongsScreen(
                                 tint = if (uiState.showFavoritesOnly) PianoError else PianoTextSecondary
                             )
                         },
-                        modifier = Modifier.testTag("filter_favorites_chip"),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = PianoPrimaryContainer,
-                            selectedLabelColor = PianoTextPrimary
-                        )
+                            selectedLabelColor = PianoPrimary,
+                            containerColor = PianoSurface
+                        ),
+                        modifier = Modifier.testTag("favorite_filter_chip")
                     )
 
                     Text(
@@ -175,34 +234,54 @@ fun MySongsScreen(
             }
 
             // Song List or Empty State
-            if (uiState.isLoading) {
-                LoadingState()
-            } else if (uiState.songs.isEmpty()) {
-                EmptyState(
-                    title = stringResource(R.string.songs_empty_title),
-                    description = stringResource(R.string.songs_empty_description),
-                    icon = Icons.Default.LibraryMusic,
-                    actionButton = {
-                        PrimaryButton(
-                            text = stringResource(R.string.songs_import_button),
-                            onClick = { showImportInfoDialog = true },
-                            modifier = Modifier.fillMaxWidth(0.7f),
-                            tag = "empty_import_button"
-                        )
-                    }
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(uiState.songs, key = { it.id }) { song ->
-                        SongItemCard(
-                            song = song,
-                            onPlay = { onPracticeSong(song.displayName, song.id, song.defaultBpm) },
-                            onToggleFavorite = { viewModel.toggleFavorite(song.id) }
-                        )
+            when {
+                uiState.isLoading -> {
+                    LoadingState(message = "Đang tải thư viện...")
+                }
+
+                uiState.songs.isEmpty() -> {
+                    EmptyState(
+                        title = stringResource(R.string.songs_empty_title),
+                        description = if (uiState.searchQuery.isNotBlank() || uiState.showFavoritesOnly) {
+                            "Không tìm thấy bài hát nào phù hợp với bộ lọc hiện tại."
+                        } else {
+                            stringResource(R.string.songs_empty_desc)
+                        },
+                        icon = Icons.Default.LibraryMusic,
+                        actionButton = {
+                            PrimaryButton(
+                                text = "Chọn file MIDI (.mid) từ máy",
+                                onClick = {
+                                    midiPickerLauncher.launch(
+                                        arrayOf("audio/midi", "audio/mid", "audio/x-midi", "application/x-midi", "*/*")
+                                    )
+                                },
+                                tag = "import_first_song_button"
+                            )
+                        }
+                    )
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(uiState.songs, key = { it.id }) { song ->
+                            SongItemCard(
+                                song = song,
+                                onPlayClick = {
+                                    onPracticeSong(song.displayName, song.id, song.defaultBpm)
+                                },
+                                onToggleFavorite = {
+                                    viewModel.toggleFavorite(song.id)
+                                },
+                                onDeleteClick = {
+                                    songToDelete = song
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -213,15 +292,16 @@ fun MySongsScreen(
 @Composable
 private fun SongItemCard(
     song: ImportedSong,
-    onPlay: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onPlayClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(PianoShapes.medium)
-            .clickable { onPlay() }
-            .testTag("song_card_${song.id}"),
+            .clickable { onPlayClick() }
+            .testTag("song_item_${song.id}"),
         shape = PianoShapes.medium,
         colors = CardDefaults.cardColors(containerColor = PianoSurface),
         border = BorderStroke(1.dp, PianoOutline)
@@ -239,19 +319,21 @@ private fun SongItemCard(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = PianoPrimaryContainer.copy(alpha = 0.6f),
+                    color = PianoPrimaryContainer,
                     modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
+                            contentDescription = "Luyện bài",
                             tint = PianoPrimary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
                 }
+
                 Spacer(modifier = Modifier.width(12.dp))
+
                 Column {
                     Text(
                         text = song.displayName,
@@ -259,24 +341,38 @@ private fun SongItemCard(
                         color = PianoTextPrimary,
                         maxLines = 1
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${song.difficulty} • ${song.defaultBpm} BPM • ${song.originalFileName}",
+                        text = "${song.difficulty} • ${song.defaultBpm} BPM • ${song.formattedDuration()}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = PianoTextSecondary,
-                        maxLines = 1
+                        color = PianoTextSecondary
                     )
                 }
             }
 
-            IconButton(
-                onClick = onToggleFavorite,
-                modifier = Modifier.testTag("favorite_button_${song.id}")
-            ) {
-                Icon(
-                    imageVector = if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = "Yêu thích",
-                    tint = if (song.isFavorite) PianoError else PianoTextSecondary
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.testTag("fav_button_${song.id}")
+                ) {
+                    Icon(
+                        imageVector = if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Yêu thích",
+                        tint = if (song.isFavorite) PianoError else PianoTextSecondary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onDeleteClick,
+                    modifier = Modifier.testTag("delete_button_${song.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Xóa",
+                        tint = Color(0xFFEF5350),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }

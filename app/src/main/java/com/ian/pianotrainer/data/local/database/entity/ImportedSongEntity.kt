@@ -10,12 +10,19 @@ data class ImportedSongEntity(
     val displayName: String,
     val originalFileName: String,
     val localFilePath: String?,
+    val fileHashSha256: String? = null,
+    val fileSizeBytes: Long? = null,
+    val midiFormatType: Int = 1,
+    val ticksPerQuarterNote: Int = 480,
+    val trackCount: Int = 1,
     val durationMs: Long?,
     val defaultBpm: Int,
     val difficulty: String,
     val importedAt: Long,
     val lastPracticedAt: Long?,
-    val isFavorite: Boolean
+    val isFavorite: Boolean,
+    val parseStatus: String = "READY",
+    val parseErrorMessage: String? = null
 )
 
 fun ImportedSongEntity.toDomainModel(): ImportedSong {
@@ -29,7 +36,8 @@ fun ImportedSongEntity.toDomainModel(): ImportedSong {
         difficulty = difficulty,
         importedAt = importedAt,
         lastPracticedAt = lastPracticedAt,
-        isFavorite = isFavorite
+        isFavorite = isFavorite,
+        notes = emptyList()
     )
 }
 

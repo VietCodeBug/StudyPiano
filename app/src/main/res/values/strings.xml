@@ -84,7 +84,9 @@
     <string name="songs_import_phase2_note">Tính năng nhập file MIDI thực tế từ bộ nhớ thiết bị sẽ khả dụng trong Giai đoạn 2.</string>
     <string name="songs_import_button">Nhập file MIDI</string>
     <string name="songs_search_placeholder">Tìm kiếm bài hát...</string>
+    <string name="songs_filter_favorites">Yêu thích</string>
     <string name="songs_empty_title">Chưa có bài hát nào</string>
+    <string name="songs_empty_desc">Nhấn Nhập file MIDI để thêm bài vào thư viện.</string>
     <string name="songs_empty_description">Nhấn Nhập file MIDI để thêm bài vào thư viện.</string>
     <string name="btn_practice_song">Luyện bài</string>
     <string name="btn_delete_song">Xóa</string>

@@ -1,42 +1,56 @@
 package com.ian.pianotrainer.feature.practice
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ian.pianotrainer.R
+import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoError
 import com.ian.pianotrainer.core.designsystem.PianoGold
@@ -68,11 +83,18 @@ import com.ian.pianotrainer.core.designsystem.PianoTextPrimary
 import com.ian.pianotrainer.core.designsystem.PianoTextSecondary
 import com.ian.pianotrainer.core.music.NoteHelper
 import com.ian.pianotrainer.core.ui.ConfirmationDialog
-import com.ian.pianotrainer.core.ui.NoteBadge
+import com.ian.pianotrainer.core.ui.ForceLandscapeWhileVisible
 import com.ian.pianotrainer.domain.model.DisplayMode
 import com.ian.pianotrainer.domain.model.ExerciseNote
 import com.ian.pianotrainer.domain.model.HandMode
+import com.ian.pianotrainer.domain.model.KeyboardRangeMode
+import com.ian.pianotrainer.domain.model.NoteDisplaySize
+import com.ian.pianotrainer.domain.model.NoteNamingMode
+import com.ian.pianotrainer.domain.model.NoteResultType
+import com.ian.pianotrainer.domain.model.PracticeMode
+import com.ian.pianotrainer.domain.model.VisualLookAhead
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PracticePlayerScreen(
     viewModel: PracticePlayerViewModel,
@@ -82,16 +104,24 @@ fun PracticePlayerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showQuitDialog by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
+
+    // Enforce landscape while in practice player
+    ForceLandscapeWhileVisible()
 
     LaunchedEffect(Unit) {
         viewModel.navigateToResult.collect { sessionId ->
-            onNavigateToResult(sessionId)
+            if (sessionId.isNotBlank()) {
+                onNavigateToResult(sessionId)
+            } else {
+                onBackClick()
+            }
         }
     }
 
-    // When exercise notes finished, trigger auto finish
+    // Auto finish when notes complete and not looping
     LaunchedEffect(uiState.isFinished) {
-        if (uiState.isFinished && uiState.exerciseNotes.isNotEmpty()) {
+        if (uiState.isFinished && uiState.exerciseNotes.isNotEmpty() && !uiState.isLooping) {
             viewModel.finishAndSaveSession()
         }
     }
@@ -110,63 +140,126 @@ fun PracticePlayerScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            PracticePlayerTopBar(
-                title = uiState.title,
-                bpm = uiState.bpm,
-                currentBeat = uiState.currentBeat,
-                isPaused = uiState.engineState.isPaused,
-                onPauseToggle = viewModel::togglePause,
-                onRestart = viewModel::restart,
-                onClose = { showQuitDialog = true }
-            )
-        },
-        containerColor = PianoBackground,
-        modifier = modifier.testTag("practice_player_screen")
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // 1. Live Stats & Progress
-            StatsHeader(
-                correct = uiState.engineState.correctNotesCount,
-                wrong = uiState.engineState.wrongNotesCount,
-                streak = uiState.engineState.currentStreak,
-                progress = if (uiState.exerciseNotes.isNotEmpty()) {
-                    uiState.engineState.currentNoteIndex.toFloat() / uiState.exerciseNotes.size
-                } else 0f
-            )
+    if (showSettingsSheet) {
+        PracticeSettingsBottomSheet(
+            uiState = uiState,
+            onDismiss = { showSettingsSheet = false },
+            onHandModeChange = viewModel::setHandMode,
+            onPracticeModeChange = viewModel::setPracticeMode,
+            onDisplayModeChange = viewModel::setDisplayMode,
+            onRangeModeChange = viewModel::setRangeMode,
+            onNoteSizeChange = viewModel::setNoteDisplaySize,
+            onLookAheadChange = viewModel::setVisualLookAhead,
+            onBpmChange = viewModel::setBpm,
+            onLoopToggle = viewModel::toggleLooping,
+            onMetronomeToggle = viewModel::toggleMetronome,
+            onFinishSession = {
+                showSettingsSheet = false
+                showQuitDialog = true
+            }
+        )
+    }
 
-            // 2. Note Stream / Visualizer Area
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(PianoBackground)
+            .testTag("practice_player_screen")
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 1. Hideable Compact Top Bar (~44dp)
+            AnimatedVisibility(
+                visible = uiState.isToolbarVisible,
+                enter = slideInVertically() + fadeIn(),
+                exit = slideOutVertically() + fadeOut()
+            ) {
+                PracticeCompactTopBar(
+                    title = uiState.title,
+                    bpm = uiState.bpm,
+                    currentBeat = uiState.currentBeat,
+                    isPaused = uiState.engineState.isPaused,
+                    elapsedSeconds = uiState.engineState.elapsedActiveSeconds,
+                    correctCount = uiState.engineState.correctNotesCount,
+                    wrongCount = uiState.engineState.wrongNotesCount,
+                    streak = uiState.engineState.currentStreak,
+                    onPauseToggle = viewModel::togglePause,
+                    onRestart = viewModel::restart,
+                    onOpenSettings = { showSettingsSheet = true },
+                    onToggleToolbar = viewModel::toggleToolbar,
+                    onClose = { showQuitDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                )
+            }
+
+            // 2. Main Piano Roll / Visualizer Stage (~70% of remaining height)
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(0.72f)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                if (uiState.displayMode == DisplayMode.FALLING_NOTES) {
-                    FallingNotesStream(
-                        notes = uiState.exerciseNotes,
-                        currentIndex = uiState.engineState.currentNoteIndex,
-                        namingMode = uiState.userSettings.noteNamingMode
+                PracticeVisualizer(
+                    exerciseNotes = uiState.exerciseNotes,
+                    currentPositionMs = uiState.engineState.currentPositionMs,
+                    currentNoteIndex = uiState.engineState.currentNoteIndex,
+                    namingMode = uiState.userSettings.noteNamingMode,
+                    startOctave = uiState.startOctave,
+                    rangeMode = uiState.rangeMode,
+                    noteDisplaySize = uiState.noteDisplaySize,
+                    lookAhead = uiState.visualLookAhead,
+                    lastResult = uiState.engineState.lastEvaluatedResult,
+                    lastPlayedMidi = uiState.engineState.lastPlayedNote,
+                    displayMode = uiState.displayMode,
+                    currentExpectedNote = uiState.engineState.currentExpectedNote,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // Stats Overlay in Top Corner (Subtle, non-intrusive)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .background(Color(0x880F172A), RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0x33CBD5E1), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "✓ ${uiState.engineState.correctNotesCount}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = PianoSuccess
                     )
-                } else {
-                    SheetMusicDisplay(
-                        currentNote = uiState.engineState.currentExpectedNote,
-                        namingMode = uiState.userSettings.noteNamingMode
+                    Text(
+                        text = "✗ ${uiState.engineState.wrongNotesCount}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = PianoError
                     )
+                    if (uiState.engineState.currentStreak > 1) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.LocalFireDepartment,
+                                contentDescription = null,
+                                tint = PianoGold,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "${uiState.engineState.currentStreak}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = PianoGold
+                            )
+                        }
+                    }
                 }
             }
 
-            // 3. Virtual Piano Keyboard
+            // 3. Piano Keyboard at bottom edge (~28% of height)
             val targetHighlight = uiState.engineState.currentExpectedNote?.let { note ->
                 listOf(
                     KeyHighlight(
                         midiNote = note.midiNote,
-                        color = PianoPrimary,
+                        color = if (note.hand == HandMode.LEFT) Color(0xFFF97316) else PianoPrimary,
                         label = note.noteName,
                         fingerNumber = note.fingerNumber,
                         hand = note.hand
@@ -180,87 +273,183 @@ fun PracticePlayerScreen(
                 activeNotes = uiState.activePressedNotes,
                 targetNotes = targetHighlight,
                 noteNamingMode = uiState.userSettings.noteNamingMode,
-                initialOctaveOffset = if (uiState.handMode == HandMode.LEFT) 2 else 3,
-                modifier = Modifier.padding(bottom = 8.dp)
+                initialOctaveOffset = uiState.startOctave,
+                rangeMode = uiState.rangeMode,
+                onOctaveChange = viewModel::setOctave,
+                onRangeModeChange = viewModel::setRangeMode,
+                upcomingNotes = uiState.exerciseNotes
+                    .filter { it.startMs in uiState.engineState.currentPositionMs..(uiState.engineState.currentPositionMs + 5000L) }
+                    .map { it.midiNote },
+                showRangeBar = false,
+                keyHeight = 115.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("practice_keyboard")
             )
+        }
+
+        // Floating mini toolbar restore button when toolbar is hidden
+        if (!uiState.isToolbarVisible) {
+            Surface(
+                shape = CircleShape,
+                color = PianoSurface.copy(alpha = 0.85f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, PianoOutline.copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickable { viewModel.toggleToolbar() }
+                    .testTag("restore_toolbar_button")
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.FullscreenExit,
+                        contentDescription = "Hiện thanh công cụ",
+                        tint = PianoTextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun PracticePlayerTopBar(
+fun PracticeCompactTopBar(
     title: String,
     bpm: Int,
     currentBeat: Int,
     isPaused: Boolean,
+    elapsedSeconds: Long,
+    correctCount: Int,
+    wrongCount: Int,
+    streak: Int,
     onPauseToggle: () -> Unit,
     onRestart: () -> Unit,
-    onClose: () -> Unit
+    onOpenSettings: () -> Unit,
+    onToggleToolbar: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Surface(
         color = PianoSurface,
-        tonalElevation = 4.dp,
-        modifier = Modifier.fillMaxWidth()
+        tonalElevation = 3.dp,
+        modifier = modifier
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.testTag("practice_close_button")
+            // Left: Close & Title
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(0.35f, fill = false)
             ) {
-                Icon(imageVector = Icons.Default.Close, contentDescription = "Dừng", tint = PianoTextPrimary)
-            }
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.size(32.dp).testTag("practice_close_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Thoát",
+                        tint = PianoTextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
                     color = PianoTextPrimary,
                     maxLines = 1
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "$bpm BPM",
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = PianoPrimary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    // Metronome 4-beat dots
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        (1..4).forEach { beat ->
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(
-                                        color = if (currentBeat == beat) PianoPrimary else PianoOutline,
-                                        shape = CircleShape
-                                    )
-                            )
-                        }
-                    }
-                }
             }
 
-            Row {
+            // Center: Time & BPM
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Time
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Timer,
+                        contentDescription = "Thời gian",
+                        tint = PianoPrimaryDark,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    val mins = elapsedSeconds / 60
+                    val secs = elapsedSeconds % 60
+                    Text(
+                        text = "%02d:%02d".format(mins, secs),
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        color = PianoTextPrimary
+                    )
+                }
+
+                // BPM
+                Text(
+                    text = "$bpm BPM",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = PianoPrimaryDark
+                )
+            }
+
+            // Right: Playback & Settings Controls
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 IconButton(
                     onClick = onRestart,
-                    modifier = Modifier.testTag("practice_restart_button")
+                    modifier = Modifier.size(32.dp).testTag("practice_restart_button")
                 ) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Luyện lại", tint = PianoTextPrimary)
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Luyện lại",
+                        tint = PianoTextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
+
                 IconButton(
                     onClick = onPauseToggle,
-                    modifier = Modifier.testTag("practice_pause_button")
+                    modifier = Modifier.size(32.dp).testTag("practice_pause_button")
                 ) {
                     Icon(
                         imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                        contentDescription = "Tạm dừng",
-                        tint = PianoPrimary
+                        contentDescription = if (isPaused) "Tiếp tục" else "Tạm dừng",
+                        tint = PianoPrimaryDark,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.size(32.dp).testTag("practice_settings_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Tùy chỉnh luyện tập",
+                        tint = PianoPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onToggleToolbar,
+                    modifier = Modifier.size(32.dp).testTag("practice_fullscreen_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Fullscreen,
+                        contentDescription = "Toàn màn hình",
+                        tint = PianoTextSecondary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -268,198 +457,424 @@ private fun PracticePlayerTopBar(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StatsHeader(
-    correct: Int,
-    wrong: Int,
-    streak: Int,
-    progress: Float
+fun PracticeSettingsBottomSheet(
+    uiState: PracticePlayerUiState,
+    onDismiss: () -> Unit,
+    onHandModeChange: (HandMode) -> Unit,
+    onPracticeModeChange: (PracticeMode) -> Unit,
+    onDisplayModeChange: (DisplayMode) -> Unit,
+    onRangeModeChange: (KeyboardRangeMode) -> Unit,
+    onNoteSizeChange: (NoteDisplaySize) -> Unit,
+    onLookAheadChange: (VisualLookAhead) -> Unit,
+    onBpmChange: (Int) -> Unit,
+    onLoopToggle: () -> Unit,
+    onMetronomeToggle: () -> Unit,
+    onFinishSession: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = PianoSuccess, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "$correct", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = PianoSuccess)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Close, contentDescription = null, tint = PianoError, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "$wrong", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = PianoError)
-                }
-            }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = PianoGold, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(text = "Streak: $streak", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = PianoGold)
-            }
-        }
-
-        LinearProgressIndicator(
-            progress = { progress.coerceIn(0f, 1f) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(CircleShape),
-            color = PianoPrimary,
-            trackColor = PianoSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun FallingNotesStream(
-    notes: List<ExerciseNote>,
-    currentIndex: Int,
-    namingMode: com.ian.pianotrainer.domain.model.NoteNamingMode
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("falling_notes_stream"),
-        shape = PianoShapes.large,
-        colors = CardDefaults.cardColors(containerColor = PianoSurface),
-        border = BorderStroke(1.dp, PianoOutline)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = PianoSurface,
+        dragHandle = null
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxWidth()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = "Hàng nốt cần đánh tiếp theo:",
-                style = MaterialTheme.typography.bodySmall,
-                color = PianoTextSecondary
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            LazyRow(
+            // Header
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                itemsIndexed(notes) { index, note ->
-                    val isTarget = (index == currentIndex)
-                    val isPast = (index < currentIndex)
+                Text(
+                    text = "Tùy chỉnh phòng luyện",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = PianoTextPrimary
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Đóng", tint = PianoTextSecondary)
+                }
+            }
 
-                    Card(
+            // 1. Keyboard Range Mode Selection
+            Text(
+                text = "Phạm vi hiển thị bàn phím",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = PianoPrimaryDark
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                KeyboardRangeMode.values().forEach { range ->
+                    val isSelected = (uiState.rangeMode == range)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) PianoPrimary else PianoSurfaceVariant,
                         modifier = Modifier
-                            .padding(horizontal = 6.dp)
-                            .size(if (isTarget) 72.dp else 56.dp),
-                        shape = PianoShapes.medium,
-                        colors = CardDefaults.cardColors(
-                            containerColor = when {
-                                isTarget -> PianoPrimary
-                                isPast -> PianoSuccess.copy(alpha = 0.2f)
-                                else -> PianoSurfaceVariant
-                            }
-                        ),
-                        border = if (isTarget) BorderStroke(2.dp, PianoPrimaryDark) else null
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onRangeModeChange(range) }
                     ) {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                        Box(
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                            contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = NoteHelper.formatNoteName(note.midiNote, namingMode),
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = if (isTarget) 18.sp else 14.sp
-                                ),
-                                color = when {
-                                    isTarget -> Color.White
-                                    isPast -> PianoSuccess
-                                    else -> PianoTextPrimary
-                                }
+                                text = when (range) {
+                                    KeyboardRangeMode.AUTO -> "Tự động"
+                                    KeyboardRangeMode.TWO_OCTAVES -> "2 Quãng"
+                                    KeyboardRangeMode.FOUR_OCTAVES -> "4 Quãng"
+                                    KeyboardRangeMode.SIX_OCTAVES -> "6 Quãng"
+                                    KeyboardRangeMode.FULL_88_KEYS -> "88 Phím"
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (isSelected) Color.White else PianoTextPrimary,
+                                maxLines = 1
                             )
-                            if (note.fingerNumber in 1..5) {
-                                Text(
-                                    text = "Ngón ${note.fingerNumber}",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = if (isTarget) 11.sp else 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    ),
-                                    color = if (isTarget) Color.White.copy(alpha = 0.9f) else PianoTextSecondary
-                                )
+                        }
+                    }
+                }
+            }
+
+            // 2. Hand Mode Selection
+            Text(
+                text = "Tay luyện tập",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = PianoPrimaryDark
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    HandMode.RIGHT to "Tay phải",
+                    HandMode.LEFT to "Tay trái",
+                    HandMode.BOTH to "Hai tay"
+                ).forEach { (hand, label) ->
+                    val isSelected = (uiState.handMode == hand)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) PianoPrimary else PianoSurfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onHandModeChange(hand) }
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (isSelected) Color.White else PianoTextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 3. Practice Mode Selection
+            Text(
+                text = "Chế độ luyện",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = PianoPrimaryDark
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    PracticeMode.WAIT_FOR_NOTE to "Chờ đúng nốt",
+                    PracticeMode.RHYTHM to "Chạy theo nhịp"
+                ).forEach { (mode, label) ->
+                    val isSelected = (uiState.practiceMode == mode)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) PianoPrimary else PianoSurfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onPracticeModeChange(mode) }
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (isSelected) Color.White else PianoTextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 4. Note Sizing & Look-ahead speed
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Note Size
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Kích thước nốt",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = PianoPrimaryDark
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        NoteDisplaySize.values().forEach { size ->
+                            val isSelected = (uiState.noteDisplaySize == size)
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSelected) PianoPrimary else PianoSurfaceVariant,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { onNoteSizeChange(size) }
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = size.label,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                        color = if (isSelected) Color.White else PianoTextPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Look-Ahead Speed
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Tốc độ nhìn trước",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = PianoPrimaryDark
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        VisualLookAhead.values().forEach { speed ->
+                            val isSelected = (uiState.visualLookAhead == speed)
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSelected) PianoPrimary else PianoSurfaceVariant,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { onLookAheadChange(speed) }
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = when (speed) {
+                                            VisualLookAhead.SLOW -> "Chậm"
+                                            VisualLookAhead.MEDIUM -> "Vừa"
+                                            VisualLookAhead.FAST -> "Nhanh"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                        color = if (isSelected) Color.White else PianoTextPrimary
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
+
+            // 5. BPM Adjustment & Toggles
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { onBpmChange(uiState.bpm - 5) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Remove, contentDescription = "Giảm BPM", tint = PianoPrimaryDark)
+                    }
+                    Text(
+                        text = "${uiState.bpm} BPM",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = PianoTextPrimary,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    IconButton(
+                        onClick = { onBpmChange(uiState.bpm + 5) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Add, contentDescription = "Tăng BPM", tint = PianoPrimaryDark)
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (uiState.isLooping) PianoPrimary else PianoSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onLoopToggle() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Loop,
+                                contentDescription = null,
+                                tint = if (uiState.isLooping) Color.White else PianoTextPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Lặp bài",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (uiState.isLooping) Color.White else PianoTextPrimary
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (uiState.isMetronomeSoundEnabled) PianoPrimary else PianoSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onMetronomeToggle() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (uiState.isMetronomeSoundEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                                contentDescription = null,
+                                tint = if (uiState.isMetronomeSoundEnabled) Color.White else PianoTextPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Metronome",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (uiState.isMetronomeSoundEnabled) Color.White else PianoTextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bottom Finish Action
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = PianoPrimary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onFinishSession() }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "Kết thúc phiên luyện tập",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun SheetMusicDisplay(
-    currentNote: ExerciseNote?,
-    namingMode: com.ian.pianotrainer.domain.model.NoteNamingMode
+fun PracticeVisualizer(
+    exerciseNotes: List<ExerciseNote>,
+    currentPositionMs: Long,
+    currentNoteIndex: Int,
+    namingMode: NoteNamingMode,
+    startOctave: Int,
+    rangeMode: KeyboardRangeMode,
+    noteDisplaySize: NoteDisplaySize,
+    lookAhead: VisualLookAhead,
+    lastResult: NoteResultType?,
+    lastPlayedMidi: Int?,
+    displayMode: DisplayMode,
+    currentExpectedNote: ExerciseNote?,
+    modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("sheet_music_display"),
-        shape = PianoShapes.large,
-        colors = CardDefaults.cardColors(containerColor = PianoSurface),
-        border = BorderStroke(1.dp, PianoOutline)
+    Box(
+        modifier = modifier
+            .testTag("practice_visualizer")
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "Bản nhạc (Khuông nhạc mẫu)",
-                style = MaterialTheme.typography.bodySmall,
-                color = PianoTextSecondary
+        if (displayMode == DisplayMode.FALLING_NOTES) {
+            FallingNotesCanvas(
+                notes = exerciseNotes,
+                currentPositionMs = currentPositionMs,
+                currentNoteIndex = currentNoteIndex,
+                namingMode = namingMode,
+                startOctave = startOctave,
+                rangeMode = rangeMode,
+                noteDisplaySize = noteDisplaySize,
+                lookAhead = lookAhead,
+                lastResult = lastResult,
+                lastPlayedMidi = lastPlayedMidi,
+                modifier = Modifier.fillMaxSize()
             )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Sheet lines visual simulation
-            Column(
+        } else {
+            // Note focus card (Active Note Mode)
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .background(PianoSurfaceVariant, PianoShapes.medium)
-                    .padding(vertical = 24.dp, horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxSize()
+                    .background(Color(0xFF0F172A), PianoShapes.medium)
+                    .border(1.dp, PianoOutline.copy(alpha = 0.5f), PianoShapes.medium),
+                contentAlignment = Alignment.Center
             ) {
-                repeat(5) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(PianoTextPrimary.copy(alpha = 0.4f))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Nốt hiện tại",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PianoTextSecondary
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (currentExpectedNote != null) {
+                        Text(
+                            text = NoteHelper.formatNoteName(currentExpectedNote.midiNote, namingMode),
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 48.sp
+                            ),
+                            color = if (currentExpectedNote.hand == HandMode.LEFT) Color(0xFFF97316) else PianoPrimary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Ngón số ${currentExpectedNote.fingerNumber}",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = PianoTextPrimary
+                        )
+                    } else {
+                        Text(
+                            text = "Hoàn thành bài tập",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = PianoSuccess
+                        )
+                    }
                 }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (currentNote != null) {
-                NoteBadge(
-                    midiNote = currentNote.midiNote,
-                    fingerNumber = currentNote.fingerNumber,
-                    handMode = currentNote.hand,
-                    noteNamingMode = namingMode,
-                    isHighlighted = true
-                )
             }
         }
     }

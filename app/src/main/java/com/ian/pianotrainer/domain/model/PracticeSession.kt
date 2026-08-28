@@ -61,13 +61,21 @@ data class PracticeResult(
     val session: PracticeSession? = null
 )
 
+data class DailyPracticeStat(
+    val dayLabel: String,
+    val dateIso: String,
+    val durationMinutes: Long
+)
+
 data class ProgressSummary(
     val totalPracticeTimeMinutes: Long = 0,
+    val todayPracticeTimeMinutes: Long = 0,
     val totalSessionsCount: Int = 0,
     val averageAccuracy: Float = 0f,
     val bestBpm: Int = 0,
     val completedLessonsCount: Int = 0,
     val currentStreakDays: Int = 0,
+    val weeklyHistory: List<DailyPracticeStat> = emptyList(),
     val recentSessions: List<PracticeSession> = emptyList()
 )
 

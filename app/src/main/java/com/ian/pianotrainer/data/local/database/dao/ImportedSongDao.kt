@@ -19,6 +19,9 @@ interface ImportedSongDao {
     @Query("SELECT * FROM imported_songs WHERE id = :id LIMIT 1")
     suspend fun getSongById(id: String): ImportedSongEntity?
 
+    @Query("SELECT * FROM imported_songs WHERE fileHashSha256 = :hash LIMIT 1")
+    suspend fun getSongByHash(hash: String): ImportedSongEntity?
+
     @Query("SELECT COUNT(*) FROM imported_songs")
     suspend fun getSongCount(): Int
 
@@ -33,6 +36,9 @@ interface ImportedSongDao {
 
     @Query("DELETE FROM imported_songs WHERE id = :id")
     suspend fun deleteSongById(id: String)
+
+    @Query("DELETE FROM imported_songs WHERE id LIKE 'song_demo_%'")
+    suspend fun deleteDemoSongs()
 
     @Query("DELETE FROM imported_songs")
     suspend fun clearAll()

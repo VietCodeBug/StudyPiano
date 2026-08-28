@@ -75,20 +75,38 @@ fun LessonJsonModel.toDomain(courseId: String): Lesson {
 }
 
 fun ExerciseJsonModel.toDomain(): Exercise {
+    val msPerBeat = (60000.0 / defaultBpm.coerceIn(30, 240))
+    var currentStartMs = 0L
+    val domainNotes = notes.map { jsonNote ->
+        val durationMs = (jsonNote.durationBeats * msPerBeat).toLong().coerceAtLeast(150L)
+        val note = ExerciseNote(
+            midiNote = jsonNote.midiNote,
+            noteName = jsonNote.noteName,
+            durationBeats = jsonNote.durationBeats,
+            fingerNumber = jsonNote.fingerNumber,
+            hand = runCatching { HandMode.valueOf(jsonNote.hand) }.getOrDefault(HandMode.RIGHT),
+            startMs = currentStartMs,
+            durationMs = durationMs
+        )
+        currentStartMs += durationMs
+        note
+    }
     return Exercise(
         id = id,
         title = title,
         defaultBpm = defaultBpm,
-        notes = notes.map { it.toDomain() }
+        notes = domainNotes
     )
 }
 
-fun ExerciseNoteJsonModel.toDomain(): ExerciseNote {
+fun ExerciseNoteJsonModel.toDomain(startMs: Long = 0L, durationMs: Long = 500L): ExerciseNote {
     return ExerciseNote(
         midiNote = midiNote,
         noteName = noteName,
         durationBeats = durationBeats,
         fingerNumber = fingerNumber,
-        hand = runCatching { HandMode.valueOf(hand) }.getOrDefault(HandMode.RIGHT)
+        hand = runCatching { HandMode.valueOf(hand) }.getOrDefault(HandMode.RIGHT),
+        startMs = startMs,
+        durationMs = durationMs
     )
 }

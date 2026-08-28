@@ -24,6 +24,7 @@ val PianoErrorContainer = Color(0xFFFFEAEA)
 val PianoOnErrorContainer = Color(0xFF7A1D1D)
 
 val PianoGold = Color(0xFFFB923C)
+val PianoAccent = Color(0xFFFF8A65)
 val PianoBlackKey = Color(0xFF18324A)
 val PianoWhiteKey = Color(0xFFFFFFFF)
 val PianoActiveKey = Color(0xFF5AA9FF)

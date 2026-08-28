@@ -46,6 +46,6 @@ class SettingsRepositoryImpl(
 
     override suspend fun resetDemoData() {
         preferencesManager.resetAllSettings()
-        sampleDataSeeder.clearAndReset()
+        sampleDataSeeder.clearAllData()
     }
 }

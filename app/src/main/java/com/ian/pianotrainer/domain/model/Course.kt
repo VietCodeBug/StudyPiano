@@ -36,5 +36,21 @@ data class ExerciseNote(
     val noteName: String = "",
     val durationBeats: Double = 1.0,
     val fingerNumber: Int = 1,
-    val hand: HandMode = HandMode.RIGHT
+    val hand: HandMode = HandMode.RIGHT,
+    val startMs: Long = 0L,
+    val durationMs: Long = 500L,
+    val trackIndex: Int = 0,
+    val velocity: Int = 80,
+    val chordId: String? = null
+)
+
+data class TimelineNote(
+    val id: Long = 0L,
+    val midiNote: Int,
+    val startMs: Long,
+    val durationMs: Long,
+    val hand: HandMode,
+    val trackIndex: Int = 0,
+    val velocity: Int = 80,
+    val chordId: String? = null
 )

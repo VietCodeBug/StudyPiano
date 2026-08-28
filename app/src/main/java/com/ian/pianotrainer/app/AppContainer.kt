@@ -1,19 +1,24 @@
 package com.ian.pianotrainer.app
 
 import android.content.Context
+import com.ian.pianotrainer.core.midi.AndroidMidiDriver
+import com.ian.pianotrainer.core.music.SystemPracticeClock
 import com.ian.pianotrainer.data.assets.AssetCurriculumDataSource
+import com.ian.pianotrainer.data.assets.AssetExerciseDataSource
 import com.ian.pianotrainer.data.local.database.PianoTrainerDatabase
 import com.ian.pianotrainer.data.local.database.SampleDataSeeder
 import com.ian.pianotrainer.data.local.preferences.PreferencesManager
-import com.ian.pianotrainer.data.mock.MockMetronomeController
-import com.ian.pianotrainer.data.mock.MockMidiInput
-import com.ian.pianotrainer.data.mock.MockPianoDeviceManager
-import com.ian.pianotrainer.data.mock.MockPracticeEngine
+import com.ian.pianotrainer.data.practice.RealMetronomeController
+import com.ian.pianotrainer.data.practice.RealPracticeEngine
 import com.ian.pianotrainer.data.repository.CurriculumRepositoryImpl
+import com.ian.pianotrainer.data.repository.ExerciseRepositoryImpl
 import com.ian.pianotrainer.data.repository.ProgressRepositoryImpl
+import com.ian.pianotrainer.data.repository.RealFreePlayRepository
 import com.ian.pianotrainer.data.repository.SettingsRepositoryImpl
 import com.ian.pianotrainer.data.repository.SongRepositoryImpl
 import com.ian.pianotrainer.domain.repository.CurriculumRepository
+import com.ian.pianotrainer.domain.repository.ExerciseRepository
+import com.ian.pianotrainer.domain.repository.FreePlayRepository
 import com.ian.pianotrainer.domain.repository.ProgressRepository
 import com.ian.pianotrainer.domain.repository.SettingsRepository
 import com.ian.pianotrainer.domain.repository.SongRepository
@@ -31,9 +36,11 @@ interface AppContainer {
     val practiceEngine: PracticeEngine
     val metronomeController: MetronomeController
     val curriculumRepository: CurriculumRepository
+    val exerciseRepository: ExerciseRepository
     val songRepository: SongRepository
     val progressRepository: ProgressRepository
     val settingsRepository: SettingsRepository
+    val freePlayRepository: FreePlayRepository
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -54,20 +61,26 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         AssetCurriculumDataSource(context)
     }
 
-    override val midiInput: MidiInput by lazy {
-        MockMidiInput()
+    private val assetExerciseDataSource: AssetExerciseDataSource by lazy {
+        AssetExerciseDataSource(context)
     }
 
-    override val pianoDeviceManager: PianoDeviceManager by lazy {
-        MockPianoDeviceManager()
+    private val midiDriver: AndroidMidiDriver by lazy {
+        AndroidMidiDriver(context)
     }
+
+    override val midiInput: MidiInput
+        get() = midiDriver
+
+    override val pianoDeviceManager: PianoDeviceManager
+        get() = midiDriver
 
     override val practiceEngine: PracticeEngine by lazy {
-        MockPracticeEngine()
+        RealPracticeEngine(SystemPracticeClock())
     }
 
     override val metronomeController: MetronomeController by lazy {
-        MockMetronomeController()
+        RealMetronomeController()
     }
 
     override val curriculumRepository: CurriculumRepository by lazy {
@@ -77,9 +90,20 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         )
     }
 
+    override val exerciseRepository: ExerciseRepository by lazy {
+        ExerciseRepositoryImpl(
+            assetExerciseDataSource = assetExerciseDataSource,
+            practiceSessionDao = database.practiceSessionDao()
+        )
+    }
+
     override val songRepository: SongRepository by lazy {
         SongRepositoryImpl(
-            importedSongDao = database.importedSongDao()
+            context = context,
+            importedSongDao = database.importedSongDao(),
+            songTrackDao = database.songTrackDao(),
+            songNoteDao = database.songNoteDao(),
+            songTempoDao = database.songTempoDao()
         )
     }
 
@@ -95,6 +119,12 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         SettingsRepositoryImpl(
             preferencesManager = preferencesManager,
             sampleDataSeeder = sampleDataSeeder
+        )
+    }
+
+    override val freePlayRepository: FreePlayRepository by lazy {
+        RealFreePlayRepository(
+            dao = database.freePlayRecordingDao()
         )
     }
 }

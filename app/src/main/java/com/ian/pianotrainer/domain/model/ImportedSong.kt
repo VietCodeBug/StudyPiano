@@ -12,4 +12,12 @@ data class ImportedSong(
     val lastPracticedAt: Long? = null,
     val isFavorite: Boolean = false,
     val notes: List<ExerciseNote> = emptyList()
-)
+) {
+    fun formattedDuration(): String {
+        val ms = durationMs ?: return "00:00"
+        val totalSec = ms / 1000
+        val mins = totalSec / 60
+        val secs = totalSec % 60
+        return "%02d:%02d".format(mins, secs)
+    }
+}

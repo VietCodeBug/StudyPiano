@@ -2,6 +2,7 @@ package com.ian.pianotrainer.feature.practice
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,12 +17,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -38,10 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ian.pianotrainer.R
+import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoOutline
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
-import com.ian.pianotrainer.core.designsystem.PianoPrimaryDark
 import com.ian.pianotrainer.core.designsystem.PianoShapes
 import com.ian.pianotrainer.core.designsystem.PianoSurface
 import com.ian.pianotrainer.core.designsystem.PianoSurfaceVariant
@@ -54,6 +59,7 @@ import com.ian.pianotrainer.core.ui.PracticeModeSelector
 import com.ian.pianotrainer.core.ui.PrimaryButton
 import com.ian.pianotrainer.core.ui.SectionHeader
 import com.ian.pianotrainer.core.ui.TempoControl
+import com.ian.pianotrainer.domain.model.FingerExercise
 import com.ian.pianotrainer.domain.model.HandMode
 
 @Composable
@@ -75,17 +81,29 @@ fun PracticeScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Box(modifier = Modifier.padding(16.dp)) {
+                    val firstExercise = uiState.exercises.firstOrNull()
                     PrimaryButton(
-                        text = stringResource(R.string.practice_start_button),
+                        text = if (firstExercise != null) "Bắt đầu: ${firstExercise.title}" else stringResource(R.string.practice_start_button),
                         onClick = {
-                            onStartPractice(
-                                "Bài luyện tự chọn",
-                                "CUSTOM_PRACTICE",
-                                "custom_drill",
-                                uiState.selectedHand.name,
-                                uiState.selectedDisplayMode.name,
-                                uiState.bpm
-                            )
+                            if (firstExercise != null) {
+                                onStartPractice(
+                                    firstExercise.title,
+                                    "EXERCISE",
+                                    firstExercise.id,
+                                    firstExercise.handMode.name,
+                                    uiState.selectedDisplayMode.name,
+                                    firstExercise.recommendedBpm
+                                )
+                            } else {
+                                onStartPractice(
+                                    "Bài luyện tự chọn",
+                                    "CUSTOM_PRACTICE",
+                                    "custom_drill",
+                                    uiState.selectedHand.name,
+                                    uiState.selectedDisplayMode.name,
+                                    uiState.bpm
+                                )
+                            }
                         },
                         tag = "start_custom_practice_button"
                     )
@@ -194,22 +212,49 @@ fun PracticeScreen(
                 }
             }
 
-            // 5. Quick Practice Drills
+            // 5. Category Chips for Finger Exercises
             item {
-                SectionHeader(title = stringResource(R.string.practice_quick_drills))
+                SectionHeader(title = "Danh mục bài luyện ngón")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val categories = listOf(
+                        "ALL" to "Tất cả",
+                        "HANON" to "Hanon độc lập ngón",
+                        "ARPEGGIO" to "Hợp âm rải (Arpeggio)",
+                        "SCALE" to "Âm giai (Scale)",
+                        "OCTAVE" to "Quãng 8 (Octave)",
+                        "CHORD" to "Hợp âm & Chuyển ngón"
+                    )
+                    categories.forEach { (catKey, catLabel) ->
+                        FilterChip(
+                            selected = uiState.selectedCategory == catKey,
+                            onClick = { viewModel.setCategory(catKey) },
+                            label = { Text(catLabel) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = PianoPrimary,
+                                selectedLabelColor = PianoBackground
+                            )
+                        )
+                    }
+                }
             }
 
-            items(uiState.quickDrills, key = { it.id }) { drill ->
-                QuickDrillCard(
-                    drill = drill,
+            // 6. Loaded Real Finger Exercises
+            items(uiState.exercises, key = { it.id }) { exercise ->
+                ExerciseCard(
+                    exercise = exercise,
                     onClick = {
                         onStartPractice(
-                            drill.title,
-                            "QUICK_DRILL",
-                            drill.id,
-                            drill.handMode.name,
+                            exercise.title,
+                            "EXERCISE",
+                            exercise.id,
+                            exercise.handMode.name,
                             uiState.selectedDisplayMode.name,
-                            drill.defaultBpm
+                            exercise.recommendedBpm
                         )
                     }
                 )
@@ -223,8 +268,8 @@ fun PracticeScreen(
 }
 
 @Composable
-private fun QuickDrillCard(
-    drill: PracticeQuickDrill,
+private fun ExerciseCard(
+    exercise: FingerExercise,
     onClick: () -> Unit
 ) {
     Card(
@@ -232,7 +277,7 @@ private fun QuickDrillCard(
             .fillMaxWidth()
             .clip(PianoShapes.medium)
             .clickable { onClick() }
-            .testTag("quick_drill_${drill.id}"),
+            .testTag("exercise_${exercise.id}"),
         shape = PianoShapes.medium,
         colors = CardDefaults.cardColors(containerColor = PianoSurface),
         border = BorderStroke(1.dp, PianoOutline)
@@ -251,13 +296,13 @@ private fun QuickDrillCard(
                 Surface(
                     shape = CircleShape,
                     color = PianoSurfaceVariant,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Default.PlayArrow,
+                            imageVector = Icons.Default.FitnessCenter,
                             contentDescription = null,
-                            tint = PianoPrimary,
+                            tint = PianoAccent,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -265,12 +310,12 @@ private fun QuickDrillCard(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = drill.title,
+                        text = exercise.title,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = PianoTextPrimary
                     )
                     Text(
-                        text = "${drill.description} • ${drill.defaultBpm} BPM",
+                        text = "${exercise.description} • ${exercise.recommendedBpm} BPM • ${exercise.difficulty}",
                         style = MaterialTheme.typography.bodySmall,
                         color = PianoTextSecondary
                     )

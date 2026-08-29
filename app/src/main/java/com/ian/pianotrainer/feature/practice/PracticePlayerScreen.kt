@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -35,8 +37,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -280,6 +280,51 @@ fun PracticePlayerScreen(
                                 text = "${uiState.engineState.currentStreak}",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = PianoGold
+                            )
+                        }
+                    }
+                }
+
+                // Pause HUD Indicator
+                if (uiState.engineState.isPaused && !uiState.isCountInActive) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xCC0F172A),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, PianoOutline),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clickable { viewModel.togglePause() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "Tiếp tục", tint = PianoPrimary, modifier = Modifier.size(24.dp))
+                            Text("Đang tạm dừng — Chạm để tiếp tục", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = PianoTextPrimary)
+                        }
+                    }
+                }
+
+                // Count-In Overlay (Gate D2)
+                if (uiState.isCountInActive) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xBB050B14)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "CHUẨN BỊ",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp),
+                                color = PianoPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "${uiState.countInBeatsRemaining}",
+                                style = MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp, fontWeight = FontWeight.Black),
+                                color = Color.White
                             )
                         }
                     }

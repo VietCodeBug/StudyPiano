@@ -100,8 +100,13 @@ fun ConnectionStatusChip(
     val (color, textRes) = when (state) {
         DeviceConnectionState.CONNECTED -> PianoSuccess to R.string.device_connected
         DeviceConnectionState.CONNECTING -> PianoPrimary to R.string.device_connecting
-        DeviceConnectionState.SCANNING -> PianoPrimary to R.string.device_status_scanning
-        DeviceConnectionState.DISCONNECTED -> PianoTextPrimary.copy(alpha = 0.5f) to R.string.device_disconnected
+        DeviceConnectionState.SCANNING,
+        DeviceConnectionState.SCANNING_MIDI,
+        DeviceConnectionState.SCANNING_EXTENDED,
+        DeviceConnectionState.CHECKING_PERMISSION -> PianoPrimary to R.string.device_status_scanning
+        DeviceConnectionState.DISCONNECTING,
+        DeviceConnectionState.DISCONNECTED,
+        DeviceConnectionState.IDLE -> PianoTextPrimary.copy(alpha = 0.5f) to R.string.device_disconnected
         DeviceConnectionState.ERROR -> PianoError to R.string.device_connection_failed
     }
 

@@ -68,6 +68,11 @@ class MicrophonePitchDetector(
     fun startListening(): Boolean {
         if (_isListening.value) return true
 
+        if (!AudioInputCoordinator.requestAccess(AudioRecordOwner.PITCH_DETECTOR)) {
+            Log.w("MicrophoneDetector", "Microphone access denied: occupied by another recorder")
+            return false
+        }
+
         try {
             val minBufSize = AudioRecord.getMinBufferSize(
                 sampleRate,
@@ -88,6 +93,7 @@ class MicrophonePitchDetector(
             if (record.state != AudioRecord.STATE_INITIALIZED) {
                 Log.e("MicrophoneDetector", "AudioRecord failed to initialize")
                 record.release()
+                AudioInputCoordinator.releaseAccess(AudioRecordOwner.PITCH_DETECTOR)
                 return false
             }
 
@@ -123,6 +129,7 @@ class MicrophonePitchDetector(
             Log.e("MicrophoneDetector", "Error releasing AudioRecord", e)
         } finally {
             audioRecord = null
+            AudioInputCoordinator.releaseAccess(AudioRecordOwner.PITCH_DETECTOR)
         }
 
         // Release any active note

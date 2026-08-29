@@ -134,6 +134,7 @@ class AndroidMidiDriver(
     companion object {
         private const val TAG = "AndroidMidiDriver"
         val BLE_MIDI_SERVICE_UUID: UUID = UUID.fromString("03B80E5A-EDE8-4B33-A751-6CE34EC4C700")
+        val BLE_MIDI_CHARACTERISTIC_UUID: UUID = UUID.fromString("7772E5DB-3868-4112-A1A9-F2669D106BF3")
         val BLE_MIDI_PARCEL_UUID: ParcelUuid = ParcelUuid(BLE_MIDI_SERVICE_UUID)
     }
 

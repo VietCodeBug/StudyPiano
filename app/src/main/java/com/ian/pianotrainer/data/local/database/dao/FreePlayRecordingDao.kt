@@ -20,6 +20,9 @@ interface FreePlayRecordingDao {
     @Query("SELECT * FROM freeplay_recordings ORDER BY createdAt DESC")
     fun getAllRecordings(): Flow<List<FreePlayRecordingEntity>>
 
+    @Query("SELECT * FROM freeplay_recordings")
+    suspend fun getAllRecordingsList(): List<FreePlayRecordingEntity>
+
     @Query("SELECT * FROM freeplay_recordings WHERE id = :id")
     suspend fun getRecordingById(id: String): FreePlayRecordingEntity?
 
@@ -31,4 +34,7 @@ interface FreePlayRecordingDao {
 
     @Query("UPDATE freeplay_recordings SET title = :title WHERE id = :id")
     suspend fun updateTitle(id: String, title: String)
+
+    @Query("DELETE FROM freeplay_recordings")
+    suspend fun clearAll()
 }

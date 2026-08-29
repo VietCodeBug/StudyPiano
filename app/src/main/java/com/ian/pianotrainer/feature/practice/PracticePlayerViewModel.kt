@@ -11,6 +11,7 @@ import com.ian.pianotrainer.domain.model.NoteDisplaySize
 import com.ian.pianotrainer.domain.model.PracticeConfiguration
 import com.ian.pianotrainer.domain.model.PracticeMode
 import com.ian.pianotrainer.domain.model.SongPlaybackData
+import com.ian.pianotrainer.domain.model.SongPracticePreset
 import com.ian.pianotrainer.domain.model.UserSettings
 import com.ian.pianotrainer.domain.model.VisualLookAhead
 import com.ian.pianotrainer.domain.repository.CurriculumRepository
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class PracticePlayerUiState(
     val title: String = "",
@@ -61,7 +63,11 @@ data class PracticePlayerUiState(
     val loopPointB: Long? = null,
     val targetDurationSeconds: Int = 0,
     val isLoadingNotes: Boolean = true,
-    val songPlaybackData: SongPlaybackData? = null
+    val songPlaybackData: SongPlaybackData? = null,
+    val isCountInActive: Boolean = false,
+    val countInBeatsRemaining: Int = 0,
+    val availablePresets: List<SongPracticePreset> = emptyList(),
+    val gradualSpeedUpEnabled: Boolean = false
 )
 
 class PracticePlayerViewModel(
@@ -100,138 +106,186 @@ class PracticePlayerViewModel(
     private val _isMetronomeSoundEnabled = MutableStateFlow(true)
     private val _isLoading = MutableStateFlow(true)
     private val _songPlaybackData = MutableStateFlow<SongPlaybackData?>(null)
+    private val _isCountInActive = MutableStateFlow(false)
+    private val _countInBeatsRemaining = MutableStateFlow(0)
+    private val _gradualSpeedUpEnabled = MutableStateFlow(false)
+    private val _availablePresets = MutableStateFlow<List<SongPracticePreset>>(emptyList())
 
     private var tickJob: Job? = null
+    private var countInJob: Job? = null
     private var lastActiveMetronomeBpm: Int = -1
 
     private val _navigateToResult = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToResult: SharedFlow<String> = _navigateToResult.asSharedFlow()
 
-    private val _configState = combine(
+    // 1. Engine & Notes Group
+    private data class EngineNotesGroup(
+        val engineState: PracticeEngineState,
+        val activeNotes: Set<Int>,
+        val notes: List<ExerciseNote>
+    )
+
+    private val engineNotesFlow = combine(
+        practiceEngine.state,
+        _activeNotes,
+        _exerciseNotes
+    ) { state, active, notes ->
+        EngineNotesGroup(state, active, notes)
+    }
+
+    // 2. Playback Config Group
+    private data class PlaybackConfigGroup(
+        val hand: HandMode,
+        val display: DisplayMode,
+        val mode: PracticeMode,
+        val bpm: Int,
+        val speed: Float
+    )
+
+    private val playbackConfigFlow = combine(
         _currentHandMode,
         _currentDisplayMode,
         _currentPracticeMode,
         _currentBpm,
-        _speedMultiplier,
+        _speedMultiplier
+    ) { hand, display, mode, bpm, speed ->
+        PlaybackConfigGroup(hand, display, mode, bpm, speed)
+    }
+
+    // 3. Layout & Geometry Config Group
+    private data class LayoutConfigGroup(
+        val octave: Int,
+        val range: KeyboardRangeMode,
+        val noteSize: NoteDisplaySize,
+        val lookAhead: VisualLookAhead,
+        val toolbarVisible: Boolean
+    )
+
+    private val layoutConfigFlow = combine(
         _startOctave,
         _rangeMode,
         _noteDisplaySize,
         _visualLookAhead,
         _isToolbarVisible
-    ) { args ->
-        args
+    ) { octave, range, noteSize, lookAhead, toolbarVisible ->
+        LayoutConfigGroup(octave, range, noteSize, lookAhead, toolbarVisible)
     }
 
-    private val _loopState = combine(_isLooping, _loopPointA, _loopPointB, _targetDurationSeconds) { isLoop, ptA, ptB, targetSec ->
-        listOf(isLoop as Any?, ptA, ptB, targetSec)
+    // 4. Loop & Flow Control Group
+    private data class LoopFlowGroup(
+        val isLoop: Boolean,
+        val ptA: Long?,
+        val ptB: Long?,
+        val targetSec: Int,
+        val countInActive: Boolean
+    )
+
+    private val loopFlowGroup = combine(
+        _isLooping,
+        _loopPointA,
+        _loopPointB,
+        _targetDurationSeconds,
+        _isCountInActive
+    ) { isLoop, ptA, ptB, targetSec, countInActive ->
+        LoopFlowGroup(isLoop, ptA, ptB, targetSec, countInActive)
     }
 
-    val uiState: StateFlow<PracticePlayerUiState> = combine(
-        practiceEngine.state,
-        _activeNotes,
-        _exerciseNotes,
-        _configState,
-        _loopState,
+    // 5. Metronome & External Group
+    private data class ExternalDataGroup(
+        val currentBeat: Int,
+        val isMetro: Boolean,
+        val soundEnabled: Boolean,
+        val countInBeats: Int,
+        val gradualSpeedUp: Boolean
+    )
+
+    private val externalDataFlow = combine(
         metronomeController.currentBeat,
         metronomeController.isRunning,
         _isMetronomeSoundEnabled,
-        settingsRepository.userSettings,
-        combine(_isLoading, _songPlaybackData) { loading, playback -> Pair(loading, playback) }
-    ) { args ->
-        val engineState = args[0] as PracticeEngineState
-        val activeNotes = args[1] as Set<Int>
-        val notes = args[2] as List<ExerciseNote>
-        val loopList = args[4] as List<*>
-        val isLoop = loopList[0] as Boolean
-        val ptA = loopList[1] as Long?
-        val ptB = loopList[2] as Long?
-        val targetSec = loopList[3] as Int
-        val currentBeat = args[5] as Int
-        val isMetro = args[6] as Boolean
-        val isSound = args[7] as Boolean
-        val settings = args[8] as UserSettings
-        @Suppress("UNCHECKED_CAST")
-        val pair = args[9] as Pair<Boolean, SongPlaybackData?>
-        val loading = pair.first
-        val playbackData = pair.second
+        _countInBeatsRemaining,
+        _gradualSpeedUpEnabled
+    ) { beat, isMetro, soundEnabled, countInBeats, gradualSpeedUp ->
+        ExternalDataGroup(beat, isMetro, soundEnabled, countInBeats, gradualSpeedUp)
+    }
 
-        val hand = _currentHandMode.value
-        val display = _currentDisplayMode.value
-        val mode = _currentPracticeMode.value
-        val bpm = _currentBpm.value
-        val speed = _speedMultiplier.value
-        val octave = _startOctave.value
-        val range = _rangeMode.value
-        val noteSize = _noteDisplaySize.value
-        val lookAhead = _visualLookAhead.value
-        val toolbarVisible = _isToolbarVisible.value
+    private data class ContextDataGroup(
+        val settings: UserSettings,
+        val loading: Boolean,
+        val playbackData: SongPlaybackData?,
+        val presets: List<SongPracticePreset>
+    )
+
+    private val contextDataFlow = combine(
+        settingsRepository.userSettings,
+        _isLoading,
+        _songPlaybackData,
+        _availablePresets
+    ) { settings, loading, playbackData, presets ->
+        ContextDataGroup(settings, loading, playbackData, presets)
+    }
+
+    val uiState: StateFlow<PracticePlayerUiState> = combine(
+        engineNotesFlow,
+        playbackConfigFlow,
+        layoutConfigFlow,
+        loopFlowGroup,
+        combine(externalDataFlow, contextDataFlow) { ext, ctx -> Pair(ext, ctx) }
+    ) { engineNotes, playConfig, layoutConfig, loopGroup, extraPair ->
+        val ext = extraPair.first
+        val ctx = extraPair.second
 
         PracticePlayerUiState(
             title = title,
             sourceType = sourceType,
             sourceId = sourceId,
-            practiceMode = mode,
-            handMode = hand,
-            displayMode = display,
-            rangeMode = range,
-            noteDisplaySize = noteSize,
-            visualLookAhead = lookAhead,
-            isToolbarVisible = toolbarVisible,
-            bpm = bpm,
-            speedMultiplier = speed,
-            startOctave = octave,
-            exerciseNotes = notes,
-            engineState = engineState,
-            activePressedNotes = activeNotes,
-            currentBeat = currentBeat,
-            isMetronomeRunning = isMetro,
-            isMetronomeSoundEnabled = isSound,
-            userSettings = settings,
-            isFinished = engineState.isFinished,
-            isLooping = isLoop,
-            loopPointA = ptA,
-            loopPointB = ptB,
-            targetDurationSeconds = targetSec,
-            isLoadingNotes = loading,
-            songPlaybackData = playbackData
+            practiceMode = playConfig.mode,
+            handMode = playConfig.hand,
+            displayMode = playConfig.display,
+            rangeMode = layoutConfig.range,
+            noteDisplaySize = layoutConfig.noteSize,
+            visualLookAhead = layoutConfig.lookAhead,
+            isToolbarVisible = layoutConfig.toolbarVisible,
+            bpm = playConfig.bpm,
+            speedMultiplier = playConfig.speed,
+            startOctave = layoutConfig.octave,
+            exerciseNotes = engineNotes.notes,
+            engineState = engineNotes.engineState,
+            activePressedNotes = engineNotes.activeNotes,
+            currentBeat = ext.currentBeat,
+            isMetronomeRunning = ext.isMetro,
+            isMetronomeSoundEnabled = ext.soundEnabled,
+            userSettings = ctx.settings,
+            isFinished = engineNotes.engineState.isFinished,
+            isLooping = loopGroup.isLoop,
+            loopPointA = loopGroup.ptA,
+            loopPointB = loopGroup.ptB,
+            targetDurationSeconds = loopGroup.targetSec,
+            isLoadingNotes = ctx.loading,
+            songPlaybackData = ctx.playbackData,
+            isCountInActive = loopGroup.countInActive,
+            countInBeatsRemaining = ext.countInBeats,
+            gradualSpeedUpEnabled = ext.gradualSpeedUp,
+            availablePresets = ctx.presets
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = PracticePlayerUiState(
-            title = title,
-            sourceType = sourceType,
-            sourceId = sourceId,
-            bpm = initialBpm
-        )
+        initialValue = PracticePlayerUiState(title = title, sourceType = sourceType, sourceId = sourceId)
     )
 
     init {
+        loadPresetsIfSong()
         loadNotesAndStart()
         observeMidiInput()
-        startEngineTicker()
+        observeEngineFinished()
     }
 
-    private fun startEngineTicker() {
-        tickJob?.cancel()
-        tickJob = viewModelScope.launch {
-            while (true) {
-                delay(25) // High-precision 40Hz tick for smooth monotonic playhead updates
-                val engState = practiceEngine.state.value
-                if (!engState.isPaused && !engState.isFinished) {
-                    practiceEngine.tickTimer()
-
-                    // Dynamic metronome follow
-                    if (_isMetronomeSoundEnabled.value) {
-                        val currentPos = engState.currentPositionMs
-                        val tempos = _songPlaybackData.value?.tempos
-                        val segBpm = tempos?.lastOrNull { it.startMs <= currentPos }?.bpm ?: _currentBpm.value
-                        val effectiveBpm = (segBpm * _speedMultiplier.value).toInt().coerceIn(30, 300)
-                        if (effectiveBpm != lastActiveMetronomeBpm) {
-                            lastActiveMetronomeBpm = effectiveBpm
-                            metronomeController.start(effectiveBpm)
-                        }
-                    }
+    private fun loadPresetsIfSong() {
+        if (sourceType == "SONG" && sourceId.isNotBlank()) {
+            viewModelScope.launch {
+                songRepository.getPracticePresets(sourceId).collect { presets ->
+                    _availablePresets.value = presets
                 }
             }
         }
@@ -240,32 +294,22 @@ class PracticePlayerViewModel(
     private fun loadNotesAndStart() {
         viewModelScope.launch {
             _isLoading.value = true
+            val playbackData = if (sourceType == "SONG" && sourceId.isNotBlank()) {
+                val data = songRepository.getSongPlaybackData(sourceId)
+                _songPlaybackData.value = data
+                data
+            } else null
 
-            var playbackData: SongPlaybackData? = null
-            if (sourceType == "SONG" || sourceId.startsWith("song_")) {
-                playbackData = songRepository.getSongPlaybackData(sourceId)
-                _songPlaybackData.value = playbackData
-            }
+            val rawNotes = loadRawNotesForSource(sourceType, sourceId, _currentHandMode.value, playbackData)
+            val baseBpm = playbackData?.song?.defaultBpm ?: _currentBpm.value
+            _currentBpm.value = baseBpm
 
-            val loadedNotes = fetchNotesForSource(sourceType, sourceId, _currentHandMode.value, playbackData)
-            _exerciseNotes.value = loadedNotes
+            _exerciseNotes.value = rawNotes
             _isLoading.value = false
 
-            if (loadedNotes.isNotEmpty()) {
-                // Auto-tune start octave based on note range
-                val minPitch = loadedNotes.minOf { it.midiNote }
-                val maxPitch = loadedNotes.maxOf { it.midiNote }
-                if (minPitch >= 60) {
-                    _startOctave.value = 4
-                } else if (maxPitch <= 60) {
-                    _startOctave.value = 2
-                }
-
-                val songDefaultBpm = playbackData?.song?.defaultBpm?.coerceIn(30, 240) ?: _currentBpm.value
-                if (sourceType == "SONG" && _speedMultiplier.value == 1.0f && initialBpm != songDefaultBpm) {
-                    val computedSpeed = (initialBpm.toFloat() / songDefaultBpm.toFloat()).coerceIn(0.25f, 1.5f)
-                    _speedMultiplier.value = computedSpeed
-                }
+            if (rawNotes.isNotEmpty()) {
+                val targetDuration = ((rawNotes.maxOf { it.startMs + it.durationMs }) / 1000).toInt() + 1
+                _targetDurationSeconds.value = targetDuration
 
                 val config = PracticeConfiguration(
                     title = title,
@@ -274,26 +318,73 @@ class PracticePlayerViewModel(
                     practiceMode = _currentPracticeMode.value,
                     handMode = _currentHandMode.value,
                     displayMode = _currentDisplayMode.value,
-                    bpm = songDefaultBpm,
-                    notes = loadedNotes
+                    bpm = _currentBpm.value,
+                    notes = rawNotes
                 )
-                practiceEngine.setPlaybackSpeed(_speedMultiplier.value)
                 practiceEngine.startPractice(
                     configuration = config,
                     isLoopingEnabled = _isLooping.value,
                     targetDurationSeconds = _targetDurationSeconds.value
                 )
+                if (_isLooping.value && _loopPointA.value != null && _loopPointB.value != null) {
+                    practiceEngine.setLoopRangeMs(_loopPointA.value!!, _loopPointB.value!!)
+                }
 
-                if (_isMetronomeSoundEnabled.value && !practiceEngine.state.value.isPaused) {
-                    val effectiveBpm = (songDefaultBpm * _speedMultiplier.value).toInt().coerceIn(30, 300)
-                    lastActiveMetronomeBpm = effectiveBpm
-                    metronomeController.start(effectiveBpm)
+                // Check count-in on start
+                val countInOpt = settingsRepository.userSettings.stateIn(viewModelScope).value.countInOption
+                if (_currentPracticeMode.value != PracticeMode.WAIT_FOR_NOTE && countInOpt != "OFF") {
+                    startCountIn(countInOpt)
+                } else {
+                    startMetronomeIfNeeded()
                 }
             }
         }
     }
 
-    private suspend fun fetchNotesForSource(
+    private fun startCountIn(countInOption: String) {
+        val totalBeats = if (countInOption == "2_MEASURES") 8 else 4
+        practiceEngine.pause()
+        _isCountInActive.value = true
+        _countInBeatsRemaining.value = totalBeats
+
+        countInJob?.cancel()
+        countInJob = viewModelScope.launch {
+            val effectiveBpm = (_currentBpm.value * _speedMultiplier.value).toInt().coerceIn(30, 300)
+            val beatIntervalMs = 60_000L / effectiveBpm
+            metronomeController.start(effectiveBpm)
+
+            for (beat in totalBeats downTo 1) {
+                _countInBeatsRemaining.value = beat
+                delay(beatIntervalMs)
+            }
+
+            _isCountInActive.value = false
+            _countInBeatsRemaining.value = 0
+            practiceEngine.resume()
+        }
+    }
+
+    private fun startMetronomeIfNeeded() {
+        if (_isMetronomeSoundEnabled.value && !practiceEngine.state.value.isPaused) {
+            val effectiveBpm = (_currentBpm.value * _speedMultiplier.value).toInt().coerceIn(30, 300)
+            lastActiveMetronomeBpm = effectiveBpm
+            metronomeController.start(effectiveBpm)
+        }
+    }
+
+    private fun observeEngineFinished() {
+        viewModelScope.launch {
+            practiceEngine.state.collect { state ->
+                if (state.isFinished) {
+                    metronomeController.stop()
+                    lastActiveMetronomeBpm = -1
+                    finishAndSaveSession()
+                }
+            }
+        }
+    }
+
+    private suspend fun loadRawNotesForSource(
         sourceType: String,
         sourceId: String,
         filteredHand: HandMode,
@@ -392,7 +483,7 @@ class PracticePlayerViewModel(
     }
 
     fun setPlaybackSpeed(multiplier: Float) {
-        val clamped = multiplier.coerceIn(0.25f, 1.5f)
+        val clamped = multiplier.coerceIn(0.25f, 2.0f)
         _speedMultiplier.value = clamped
         practiceEngine.setPlaybackSpeed(clamped)
         if (_isMetronomeSoundEnabled.value && !practiceEngine.state.value.isPaused) {
@@ -463,6 +554,10 @@ class PracticePlayerViewModel(
         practiceEngine.setLooping(nextState)
     }
 
+    fun toggleGradualSpeedUp() {
+        _gradualSpeedUpEnabled.value = !_gradualSpeedUpEnabled.value
+    }
+
     fun togglePause() {
         val currentEngine = practiceEngine.state.value
         if (currentEngine.isPaused) {
@@ -491,19 +586,74 @@ class PracticePlayerViewModel(
         }
     }
 
+    fun saveCurrentAsPreset(presetName: String) {
+        if (sourceType != "SONG" || sourceId.isBlank()) return
+        val name = presetName.trim().ifBlank { "Preset ${_availablePresets.value.size + 1}" }
+        val preset = SongPracticePreset(
+            id = UUID.randomUUID().toString(),
+            songId = sourceId,
+            name = name,
+            loopStartMs = _loopPointA.value,
+            loopEndMs = _loopPointB.value,
+            handMode = _currentHandMode.value,
+            practiceMode = _currentPracticeMode.value,
+            targetBpm = _currentBpm.value,
+            speedMultiplier = _speedMultiplier.value,
+            lookAhead = _visualLookAhead.value,
+            noteDisplaySize = _noteDisplaySize.value
+        )
+        viewModelScope.launch {
+            songRepository.savePracticePreset(preset)
+        }
+    }
+
+    fun loadPreset(preset: SongPracticePreset) {
+        _currentHandMode.value = preset.handMode
+        _currentPracticeMode.value = preset.practiceMode
+        _currentBpm.value = preset.targetBpm
+        _speedMultiplier.value = preset.speedMultiplier
+        _visualLookAhead.value = preset.lookAhead
+        _noteDisplaySize.value = preset.noteDisplaySize
+        if (preset.loopStartMs != null && preset.loopEndMs != null && preset.loopEndMs > preset.loopStartMs) {
+            _loopPointA.value = preset.loopStartMs
+            _loopPointB.value = preset.loopEndMs
+            _isLooping.value = true
+            practiceEngine.setLoopRangeMs(preset.loopStartMs, preset.loopEndMs)
+        } else {
+            clearLoop()
+        }
+        loadNotesAndStart()
+    }
+
+    fun deletePreset(presetId: String) {
+        viewModelScope.launch {
+            songRepository.deletePracticePreset(presetId)
+        }
+    }
+
     fun finishAndSaveSession() {
         viewModelScope.launch {
             metronomeController.stop()
             lastActiveMetronomeBpm = -1
             tickJob?.cancel()
+            countInJob?.cancel()
             val result = practiceEngine.stop()
             val session = result.session
             if (session != null && (session.durationMs >= 2000L || session.correctNotes > 0 || session.wrongNotes > 0)) {
-                progressRepository.savePracticeSession(session, session.noteResults)
+                val enrichedSession = session.copy(
+                    sourceTitleSnapshot = title,
+                    score = session.correctNotes * 10,
+                    maxStreak = session.correctNotes,
+                    inputSource = "VIRTUAL_KEYBOARD",
+                    effectiveSpeed = _speedMultiplier.value,
+                    loopStartMs = _loopPointA.value,
+                    loopEndMs = _loopPointB.value
+                )
+                progressRepository.savePracticeSession(enrichedSession, session.noteResults)
                 if (sourceType == "SONG" && sourceId.isNotBlank()) {
                     songRepository.updateLastPracticed(sourceId)
                 }
-                _navigateToResult.emit(session.id)
+                _navigateToResult.emit(enrichedSession.id)
             } else {
                 _navigateToResult.emit("")
             }
@@ -515,6 +665,7 @@ class PracticePlayerViewModel(
         metronomeController.stop()
         lastActiveMetronomeBpm = -1
         tickJob?.cancel()
+        countInJob?.cancel()
     }
 
     class Factory(

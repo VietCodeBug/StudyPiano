@@ -12,9 +12,18 @@ interface PracticeNoteResultDao {
     @Query("SELECT * FROM practice_note_results WHERE sessionId = :sessionId ORDER BY occurredAtOffsetMs ASC")
     fun getNoteResultsForSession(sessionId: String): Flow<List<PracticeNoteResultEntity>>
 
+    @Query("SELECT * FROM practice_note_results")
+    fun getAllNoteResults(): Flow<List<PracticeNoteResultEntity>>
+
+    @Query("SELECT * FROM practice_note_results")
+    suspend fun getAllNoteResultsList(): List<PracticeNoteResultEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNoteResults(results: List<PracticeNoteResultEntity>)
 
     @Query("DELETE FROM practice_note_results WHERE sessionId = :sessionId")
     suspend fun deleteResultsForSession(sessionId: String)
+
+    @Query("DELETE FROM practice_note_results")
+    suspend fun clearAll()
 }

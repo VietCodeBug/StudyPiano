@@ -15,11 +15,14 @@ import com.ian.pianotrainer.data.local.database.entity.SongNoteEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTempoEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTimeSignatureEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
+import com.ian.pianotrainer.data.local.database.entity.toDomain
 import com.ian.pianotrainer.data.local.database.entity.toDomainModel
+import com.ian.pianotrainer.data.local.database.entity.toEntity
 import com.ian.pianotrainer.domain.model.ExerciseNote
 import com.ian.pianotrainer.domain.model.HandMode
 import com.ian.pianotrainer.domain.model.ImportedSong
 import com.ian.pianotrainer.domain.model.SongPlaybackData
+import com.ian.pianotrainer.domain.model.SongPracticePreset
 import com.ian.pianotrainer.domain.model.SongTempoInfo
 import com.ian.pianotrainer.domain.model.SongTimeSignature
 import com.ian.pianotrainer.domain.model.SongTrackInfo
@@ -356,6 +359,28 @@ class SongRepositoryImpl(
         val song = importedSongDao.getSongById(id) ?: return@withContext
         val updated = song.copy(lastPracticedAt = System.currentTimeMillis())
         importedSongDao.updateSong(updated)
+    }
+
+    override suspend fun getAllSongsList(): List<ImportedSong> = withContext(Dispatchers.IO) {
+        importedSongDao.getAllSongsList().map { it.toDomainModel() }
+    }
+
+    override fun getPracticePresets(songId: String): Flow<List<SongPracticePreset>> {
+        return database.songPracticePresetDao().getPresetsForSong(songId).map { list ->
+            list.map { it.toDomain() }
+        }
+    }
+
+    override suspend fun getAllPresetsList(): List<SongPracticePreset> = withContext(Dispatchers.IO) {
+        database.songPracticePresetDao().getAllPresets().map { it.toDomain() }
+    }
+
+    override suspend fun savePracticePreset(preset: SongPracticePreset) = withContext(Dispatchers.IO) {
+        database.songPracticePresetDao().insertOrUpdate(preset.toEntity())
+    }
+
+    override suspend fun deletePracticePreset(id: String) = withContext(Dispatchers.IO) {
+        database.songPracticePresetDao().deletePresetById(id)
     }
 
     private fun midiNoteToName(midiNote: Int): String {

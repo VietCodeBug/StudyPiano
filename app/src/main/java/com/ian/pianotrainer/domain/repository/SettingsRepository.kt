@@ -2,6 +2,7 @@ package com.ian.pianotrainer.domain.repository
 
 import com.ian.pianotrainer.domain.model.DisplayMode
 import com.ian.pianotrainer.domain.model.HandMode
+import com.ian.pianotrainer.domain.model.KeyboardRangeMode
 import com.ian.pianotrainer.domain.model.NoteNamingMode
 import com.ian.pianotrainer.domain.model.UserSettings
 import kotlinx.coroutines.flow.Flow
@@ -16,5 +17,11 @@ interface SettingsRepository {
     suspend fun setMetronomeVolume(volume: Float)
     suspend fun setLastSelectedHandMode(handMode: HandMode)
     suspend fun setLastKnownMidiDeviceName(name: String)
-    suspend fun resetDemoData()
+    suspend fun setDailyGoalMinutes(minutes: Int)
+    suspend fun setCountInOption(option: String)
+    suspend fun setAutoReconnectMidi(enabled: Boolean)
+    suspend fun setKeyboardRangeMode(mode: KeyboardRangeMode)
+    suspend fun setDefaultLookAheadMs(lookAheadMs: Long)
+    suspend fun resetAllUserData()
+    suspend fun resetDemoData() // Alias for backward compatibility
 }

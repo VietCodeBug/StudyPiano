@@ -4,6 +4,7 @@ import com.ian.pianotrainer.data.local.database.DatabaseMaintenance
 import com.ian.pianotrainer.data.local.preferences.PreferencesManager
 import com.ian.pianotrainer.domain.model.DisplayMode
 import com.ian.pianotrainer.domain.model.HandMode
+import com.ian.pianotrainer.domain.model.KeyboardRangeMode
 import com.ian.pianotrainer.domain.model.NoteNamingMode
 import com.ian.pianotrainer.domain.model.UserSettings
 import com.ian.pianotrainer.domain.repository.SettingsRepository
@@ -44,8 +45,32 @@ class SettingsRepositoryImpl(
         preferencesManager.setLastKnownMidiDeviceName(name)
     }
 
-    override suspend fun resetDemoData() {
+    override suspend fun setDailyGoalMinutes(minutes: Int) {
+        preferencesManager.setDailyGoalMinutes(minutes)
+    }
+
+    override suspend fun setCountInOption(option: String) {
+        preferencesManager.setCountInOption(option)
+    }
+
+    override suspend fun setAutoReconnectMidi(enabled: Boolean) {
+        preferencesManager.setAutoReconnectMidi(enabled)
+    }
+
+    override suspend fun setKeyboardRangeMode(mode: KeyboardRangeMode) {
+        preferencesManager.setKeyboardRangeMode(mode)
+    }
+
+    override suspend fun setDefaultLookAheadMs(lookAheadMs: Long) {
+        preferencesManager.setDefaultLookAheadMs(lookAheadMs)
+    }
+
+    override suspend fun resetAllUserData() {
         preferencesManager.resetAllSettings()
         databaseMaintenance.clearAllData()
+    }
+
+    override suspend fun resetDemoData() {
+        resetAllUserData()
     }
 }

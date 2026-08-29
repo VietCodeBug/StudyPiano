@@ -152,7 +152,7 @@ fun DisplayModeSelector(
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            DisplayMode.entries.forEach { mode ->
+            DisplayMode.entries.filter { it != DisplayMode.SHEET_MUSIC }.forEach { mode ->
                 val isSelected = (mode == selectedDisplayMode)
                 val label = when (mode) {
                     DisplayMode.FALLING_NOTES -> stringResource(R.string.display_falling_notes)

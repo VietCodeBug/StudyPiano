@@ -202,7 +202,8 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.Progress.route) {
                             val viewModel: ProgressViewModel = viewModel(
                                 factory = ProgressViewModel.Factory(
-                                    progressRepository = appContainer.progressRepository
+                                    progressRepository = appContainer.progressRepository,
+                                    settingsRepository = appContainer.settingsRepository
                                 )
                             )
                             ProgressScreen(
@@ -376,11 +377,12 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.FreePlay.route) {
                             val viewModel: FreePlayViewModel = viewModel(
                                 factory = FreePlayViewModel.Factory(
-                                    context = this@MainActivity,
+                                    context = applicationContext,
                                     midiInput = appContainer.midiInput,
                                     metronomeController = appContainer.metronomeController,
                                     settingsRepository = appContainer.settingsRepository,
-                                    freePlayRepository = appContainer.freePlayRepository
+                                    freePlayRepository = appContainer.freePlayRepository,
+                                    progressRepository = appContainer.progressRepository
                                 )
                             )
                             FreePlayScreen(
@@ -422,7 +424,7 @@ class MainActivity : ComponentActivity() {
                             val viewModel: SettingsViewModel = viewModel(
                                 factory = SettingsViewModel.Factory(
                                     settingsRepository = appContainer.settingsRepository,
-                                    progressRepository = appContainer.progressRepository
+                                    backupRepository = appContainer.backupRepository
                                 )
                             )
                             SettingsScreen(

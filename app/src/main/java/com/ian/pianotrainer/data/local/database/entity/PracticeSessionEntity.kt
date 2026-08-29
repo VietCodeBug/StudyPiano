@@ -28,7 +28,14 @@ data class PracticeSessionEntity(
     val endedAt: Long? = null,
     val pausedDurationMs: Long = 0L,
     val sessionStatus: String = "COMPLETED", // IN_PROGRESS, COMPLETED, CANCELLED
-    val resumeCheckpointMs: Long? = null
+    val resumeCheckpointMs: Long? = null,
+    val sourceTitleSnapshot: String? = null,
+    val score: Int = 0,
+    val maxStreak: Int = 0,
+    val inputSource: String = "VIRTUAL_KEYBOARD",
+    val effectiveSpeed: Float = 1.0f,
+    val loopStartMs: Long? = null,
+    val loopEndMs: Long? = null
 )
 
 fun PracticeSessionEntity.toDomainModel(): PracticeSession {
@@ -49,7 +56,14 @@ fun PracticeSessionEntity.toDomainModel(): PracticeSession {
         earlyNotes = earlyNotes,
         lateNotes = lateNotes,
         accuracy = accuracy,
-        noteResults = emptyList()
+        noteResults = emptyList(),
+        sourceTitleSnapshot = sourceTitleSnapshot,
+        score = score,
+        maxStreak = maxStreak,
+        inputSource = inputSource,
+        effectiveSpeed = effectiveSpeed,
+        loopStartMs = loopStartMs,
+        loopEndMs = loopEndMs
     )
 }
 
@@ -73,6 +87,13 @@ fun PracticeSession.toEntity(): PracticeSessionEntity {
         accuracy = accuracy,
         endedAt = startedAt + durationMs,
         pausedDurationMs = 0L,
-        sessionStatus = "COMPLETED"
+        sessionStatus = "COMPLETED",
+        sourceTitleSnapshot = sourceTitleSnapshot,
+        score = score,
+        maxStreak = maxStreak,
+        inputSource = inputSource,
+        effectiveSpeed = effectiveSpeed,
+        loopStartMs = loopStartMs,
+        loopEndMs = loopEndMs
     )
 }

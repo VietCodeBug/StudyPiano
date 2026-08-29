@@ -13,6 +13,9 @@ interface ImportedSongDao {
     @Query("SELECT * FROM imported_songs ORDER BY importedAt DESC")
     fun getAllSongs(): Flow<List<ImportedSongEntity>>
 
+    @Query("SELECT * FROM imported_songs ORDER BY importedAt DESC")
+    suspend fun getAllSongsList(): List<ImportedSongEntity>
+
     @Query("SELECT * FROM imported_songs WHERE isFavorite = 1 ORDER BY importedAt DESC")
     fun getFavoriteSongs(): Flow<List<ImportedSongEntity>>
 

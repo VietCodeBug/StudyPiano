@@ -14,6 +14,9 @@ object NoteHelper {
         }
     }
 
+    fun midiToNoteName(midiNote: Int, mode: NoteNamingMode = NoteNamingMode.CDE): String =
+        formatNoteName(midiNote, mode)
+
     fun isMiddleC(midiNote: Int): Boolean = midiNote == MidiConstants.MIDDLE_C_MIDI_NOTE
 
     fun isBlackKey(midiNote: Int): Boolean = MidiConstants.isBlackKey(midiNote)

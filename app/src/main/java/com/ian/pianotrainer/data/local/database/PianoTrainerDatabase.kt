@@ -12,6 +12,7 @@ import com.ian.pianotrainer.data.local.database.dao.LessonProgressDao
 import com.ian.pianotrainer.data.local.database.dao.PracticeNoteResultDao
 import com.ian.pianotrainer.data.local.database.dao.PracticeSessionDao
 import com.ian.pianotrainer.data.local.database.dao.SongNoteDao
+import com.ian.pianotrainer.data.local.database.dao.SongPracticePresetDao
 import com.ian.pianotrainer.data.local.database.dao.SongTempoDao
 import com.ian.pianotrainer.data.local.database.dao.SongTimeSignatureDao
 import com.ian.pianotrainer.data.local.database.dao.SongTrackDao
@@ -22,6 +23,7 @@ import com.ian.pianotrainer.data.local.database.entity.LessonProgressEntity
 import com.ian.pianotrainer.data.local.database.entity.PracticeNoteResultEntity
 import com.ian.pianotrainer.data.local.database.entity.PracticeSessionEntity
 import com.ian.pianotrainer.data.local.database.entity.SongNoteEntity
+import com.ian.pianotrainer.data.local.database.entity.SongPracticePresetEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTempoEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTimeSignatureEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
@@ -37,9 +39,10 @@ import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
         PracticeSessionEntity::class,
         PracticeNoteResultEntity::class,
         FreePlayRecordingEntity::class,
-        FreePlayRecordedEventEntity::class
+        FreePlayRecordedEventEntity::class,
+        SongPracticePresetEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class PianoTrainerDatabase : RoomDatabase() {
@@ -52,6 +55,7 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
     abstract fun practiceSessionDao(): PracticeSessionDao
     abstract fun practiceNoteResultDao(): PracticeNoteResultDao
     abstract fun freePlayRecordingDao(): FreePlayRecordingDao
+    abstract fun songPracticePresetDao(): SongPracticePresetDao
 
     companion object {
         const val DATABASE_NAME = "piano_trainer.db"
@@ -195,6 +199,51 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. practice_sessions new columns
+                db.execSQL("ALTER TABLE practice_sessions ADD COLUMN sourceTitleSnapshot TEXT")
+                db.execSQL("ALTER TABLE practice_sessions ADD COLUMN score INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE practice_sessions ADD COLUMN maxStreak INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE practice_sessions ADD COLUMN inputSource TEXT NOT NULL DEFAULT 'VIRTUAL_KEYBOARD'")
+                db.execSQL("ALTER TABLE practice_sessions ADD COLUMN effectiveSpeed REAL NOT NULL DEFAULT 1.0")
+                db.execSQL("ALTER TABLE practice_sessions ADD COLUMN loopStartMs INTEGER")
+                db.execSQL("ALTER TABLE practice_sessions ADD COLUMN loopEndMs INTEGER")
+
+                // 2. freeplay_recordings new columns
+                db.execSQL("ALTER TABLE freeplay_recordings ADD COLUMN inputSource TEXT NOT NULL DEFAULT 'VIRTUAL_KEYBOARD'")
+                db.execSQL("ALTER TABLE freeplay_recordings ADD COLUMN bpm INTEGER NOT NULL DEFAULT 80")
+                db.execSQL("ALTER TABLE freeplay_recordings ADD COLUMN fileStatus TEXT NOT NULL DEFAULT 'READY'")
+
+                // 3. freeplay_recorded_events new columns
+                db.execSQL("ALTER TABLE freeplay_recorded_events ADD COLUMN controlNumber INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE freeplay_recorded_events ADD COLUMN controlValue INTEGER NOT NULL DEFAULT 0")
+
+                // 4. song_practice_presets table
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS song_practice_presets (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        songId TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        loopStartMs INTEGER,
+                        loopEndMs INTEGER,
+                        handMode TEXT NOT NULL DEFAULT 'BOTH',
+                        practiceMode TEXT NOT NULL DEFAULT 'WAIT_FOR_NOTE',
+                        targetBpm INTEGER NOT NULL DEFAULT 120,
+                        speedMultiplier REAL NOT NULL DEFAULT 1.0,
+                        lookAhead INTEGER NOT NULL DEFAULT 4000,
+                        noteDisplaySize TEXT NOT NULL DEFAULT 'MEDIUM',
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        FOREIGN KEY(songId) REFERENCES imported_songs(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_song_practice_presets_songId ON song_practice_presets(songId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: PianoTrainerDatabase? = null
 
@@ -205,7 +254,7 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
                     PianoTrainerDatabase::class.java,
                     DATABASE_NAME
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance

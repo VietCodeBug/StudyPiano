@@ -41,6 +41,7 @@ interface AppContainer {
     val progressRepository: ProgressRepository
     val settingsRepository: SettingsRepository
     val freePlayRepository: FreePlayRepository
+    val backupRepository: com.ian.pianotrainer.domain.repository.BackupRepository
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -54,7 +55,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val databaseMaintenance: DatabaseMaintenance by lazy {
-        DatabaseMaintenance(database)
+        DatabaseMaintenance(database, context)
     }
 
     private val assetCurriculumDataSource: AssetCurriculumDataSource by lazy {
@@ -126,7 +127,15 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val freePlayRepository: FreePlayRepository by lazy {
         RealFreePlayRepository(
-            dao = database.freePlayRecordingDao()
+            context = context,
+            database = database
+        )
+    }
+
+    override val backupRepository: com.ian.pianotrainer.domain.repository.BackupRepository by lazy {
+        com.ian.pianotrainer.data.repository.BackupRepositoryImpl(
+            context = context,
+            database = database
         )
     }
 }

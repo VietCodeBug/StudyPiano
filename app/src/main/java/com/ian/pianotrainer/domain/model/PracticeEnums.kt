@@ -57,9 +57,14 @@ enum class NoteResultType {
 }
 
 enum class DeviceConnectionState {
+    IDLE,
     DISCONNECTED,
+    CHECKING_PERMISSION,
     SCANNING,
+    SCANNING_MIDI,
+    SCANNING_EXTENDED,
     CONNECTING,
     CONNECTED,
+    DISCONNECTING,
     ERROR
 }

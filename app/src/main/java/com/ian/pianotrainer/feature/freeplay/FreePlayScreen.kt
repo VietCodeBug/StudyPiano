@@ -29,8 +29,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FiberManualRecord
@@ -43,8 +45,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -320,7 +320,7 @@ fun FreePlayTopBar(
             // Left: Back & Title
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack, modifier = Modifier.size(32.dp).testTag("freeplay_back_button")) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Quay lại", tint = PianoTextPrimary, modifier = Modifier.size(20.dp))
+                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại", tint = PianoTextPrimary, modifier = Modifier.size(20.dp))
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
@@ -694,7 +694,7 @@ fun FreePlaySettingsBottomSheet(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = if (uiState.isMetronomeRunning) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                            imageVector = if (uiState.isMetronomeRunning) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                             contentDescription = null,
                             tint = if (uiState.isMetronomeRunning) Color.White else PianoTextPrimary,
                             modifier = Modifier.size(16.dp)

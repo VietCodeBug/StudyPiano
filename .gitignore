@@ -17,4 +17,6 @@ local.properties
 .env
 debug.keystore
 /MID/
+/dist/
 *.apk
+*.bat

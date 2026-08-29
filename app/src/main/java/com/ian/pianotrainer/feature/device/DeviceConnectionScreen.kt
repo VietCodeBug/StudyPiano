@@ -385,8 +385,13 @@ fun DeviceConnectionScreen(
                                     text = when (uiState.connectionState) {
                                         DeviceConnectionState.CONNECTED -> "Đã kết nối MIDI"
                                         DeviceConnectionState.CONNECTING -> "Đang kết nối…"
-                                        DeviceConnectionState.SCANNING -> "Đang quét…"
-                                        DeviceConnectionState.DISCONNECTED -> "Chưa kết nối"
+                                        DeviceConnectionState.SCANNING,
+                                        DeviceConnectionState.SCANNING_MIDI,
+                                        DeviceConnectionState.SCANNING_EXTENDED -> "Đang quét…"
+                                        DeviceConnectionState.CHECKING_PERMISSION -> "Đang kiểm tra quyền…"
+                                        DeviceConnectionState.DISCONNECTING -> "Đang ngắt kết nối…"
+                                        DeviceConnectionState.DISCONNECTED,
+                                        DeviceConnectionState.IDLE -> "Chưa kết nối"
                                         DeviceConnectionState.ERROR -> "Lỗi kết nối"
                                     },
                                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),

@@ -12,6 +12,9 @@ interface PracticeSessionDao {
     @Query("SELECT * FROM practice_sessions WHERE sessionStatus = 'COMPLETED' ORDER BY startedAt DESC")
     fun getAllSessions(): Flow<List<PracticeSessionEntity>>
 
+    @Query("SELECT * FROM practice_sessions ORDER BY startedAt DESC")
+    suspend fun getAllSessionsList(): List<PracticeSessionEntity>
+
     @Query("SELECT * FROM practice_sessions WHERE sessionStatus = 'COMPLETED' ORDER BY startedAt DESC LIMIT :limit")
     fun getRecentSessions(limit: Int): Flow<List<PracticeSessionEntity>>
 

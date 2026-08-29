@@ -27,6 +27,8 @@ import com.ian.pianotrainer.domain.model.MidiControlEvent
 import com.ian.pianotrainer.domain.model.MidiInputSource
 import com.ian.pianotrainer.domain.model.MidiNoteEvent
 import com.ian.pianotrainer.domain.model.PianoDevice
+import com.ian.pianotrainer.domain.model.PianoDeviceCapability
+import com.ian.pianotrainer.domain.model.ScanMode
 import com.ian.pianotrainer.domain.service.MidiInput
 import com.ian.pianotrainer.domain.service.PianoDeviceManager
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +44,26 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
+
+object MidiErrorCodes {
+    const val BT_NOT_SUPPORTED = "BT_NOT_SUPPORTED"
+    const val BT_PERMISSION_DENIED = "BT_PERMISSION_DENIED"
+    const val BT_DISABLED = "BT_DISABLED"
+    const val BLE_MIDI_SERVICE_NOT_FOUND = "BLE_MIDI_SERVICE_NOT_FOUND"
+    const val MIDI_DEVICE_OPEN_FAILED = "MIDI_DEVICE_OPEN_FAILED"
+    const val MIDI_OUTPUT_PORT_NOT_FOUND = "MIDI_OUTPUT_PORT_NOT_FOUND"
+    const val MIDI_PORT_OPEN_FAILED = "MIDI_PORT_OPEN_FAILED"
+}
+
+data class MidiRawLogEntry(
+    val timestampMs: Long,
+    val relativeTimeMs: Long,
+    val description: String,
+    val rawHexBytes: String,
+    val channel: Int,
+    val noteOrCc: Int,
+    val valueOrVelocity: Int
+)
 
 class AndroidMidiDriver(
     private val context: Context
@@ -71,6 +93,17 @@ class AndroidMidiDriver(
     private val _lastDiagnosticEvent = MutableStateFlow<MidiNoteEvent?>(null)
     val lastDiagnosticEvent: StateFlow<MidiNoteEvent?> = _lastDiagnosticEvent.asStateFlow()
 
+    private val _rawLogRingBuffer = MutableStateFlow<List<MidiRawLogEntry>>(emptyList())
+    val rawLogRingBuffer: StateFlow<List<MidiRawLogEntry>> = _rawLogRingBuffer.asStateFlow()
+
+    private val _lastErrorCode = MutableStateFlow<String?>(null)
+    val lastErrorCode: StateFlow<String?> = _lastErrorCode.asStateFlow()
+
+    private val _lastErrorMessage = MutableStateFlow<String?>(null)
+    val lastErrorMessage: StateFlow<String?> = _lastErrorMessage.asStateFlow()
+
+    private var sessionStartMonotonicMs: Long = SystemClock.elapsedRealtime()
+
     // Microphone pitch detector integration
     val micPitchDetector = MicrophonePitchDetector(context, scope)
 
@@ -82,7 +115,7 @@ class AndroidMidiDriver(
         }
     }
 
-    private val bluetoothAdapter: BluetoothAdapter? by lazy {
+    val bluetoothAdapter: BluetoothAdapter? by lazy {
         val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bm?.adapter
     }
@@ -94,6 +127,9 @@ class AndroidMidiDriver(
 
     // Scanned BLE devices cache: address -> BluetoothDevice
     private val discoveredBluetoothDevices = mutableMapOf<String, BluetoothDevice>()
+    private val discoveredDeviceCapabilities = mutableMapOf<String, PianoDeviceCapability>()
+
+    private val parser = MidiStreamParser(MidiInputSource.BLUETOOTH_LE, null)
 
     companion object {
         private const val TAG = "AndroidMidiDriver"
@@ -124,12 +160,19 @@ class AndroidMidiDriver(
             result ?: return
             val device = result.device ?: return
             val address = device.address ?: return
-            val name = result.scanRecord?.deviceName ?: device.name ?: "Thiết bị BLE (${address.takeLast(5)})"
+            val name = result.scanRecord?.deviceName ?: device.name ?: "Thiết bị không tên"
             val rssi = result.rssi
             val serviceUuids = result.scanRecord?.serviceUuids
             val hasMidiUuid = serviceUuids?.any { it.uuid == BLE_MIDI_SERVICE_UUID } ?: false
 
             discoveredBluetoothDevices[address] = device
+            val capability = if (hasMidiUuid) {
+                PianoDeviceCapability.BLE_MIDI_VERIFIED
+            } else {
+                // If it looks like audio or has no MIDI UUID
+                PianoDeviceCapability.BLUETOOTH_AUDIO_ONLY
+            }
+            discoveredDeviceCapabilities[address] = capability
 
             val currentList = _discoveredDevices.value.toMutableList()
             val existingIndex = currentList.indexOfFirst { it.bluetoothAddress == address || it.id == "ble_$address" }
@@ -137,9 +180,10 @@ class AndroidMidiDriver(
             val pianoDev = PianoDevice(
                 id = "ble_$address",
                 name = name,
-                type = DeviceType.BLUETOOTH_MIDI,
+                type = if (hasMidiUuid) DeviceType.BLUETOOTH_MIDI else DeviceType.BLUETOOTH_MIDI,
+                capability = capability,
                 isSimulated = false,
-                isConnected = (_connectedDevice.value?.bluetoothAddress == address),
+                isConnected = (_connectedDevice.value?.bluetoothAddress == address && _connectionState.value == DeviceConnectionState.CONNECTED),
                 isConnecting = (_connectedDevice.value?.bluetoothAddress == address && _connectionState.value == DeviceConnectionState.CONNECTING),
                 signalStrength = rssi,
                 bluetoothAddress = address,
@@ -162,6 +206,8 @@ class AndroidMidiDriver(
         override fun onScanFailed(errorCode: Int) {
             Log.e(TAG, "BLE Scan failed with errorCode: $errorCode")
             _isBleScanning.value = false
+            _lastErrorCode.value = "BLE_SCAN_FAILED"
+            _lastErrorMessage.value = "Quét BLE thất bại (Mã lỗi $errorCode). Hãy kiểm tra lại Bluetooth."
         }
     }
 
@@ -199,7 +245,13 @@ class AndroidMidiDriver(
                 DeviceType.USB_MIDI
             }
 
-            val isThisConnected = (info.id == activeDeviceInfo?.id)
+            val capability = if (info.type == MidiDeviceInfo.TYPE_BLUETOOTH) {
+                PianoDeviceCapability.BLE_MIDI_VERIFIED
+            } else {
+                PianoDeviceCapability.USB_MIDI
+            }
+
+            val isThisConnected = (info.id == activeDeviceInfo?.id && _connectionState.value == DeviceConnectionState.CONNECTED)
             val portCount = info.inputPortCount + info.outputPortCount
 
             deviceList.add(
@@ -207,6 +259,7 @@ class AndroidMidiDriver(
                     id = "midi_dev_${info.id}",
                     name = name,
                     type = type,
+                    capability = capability,
                     isSimulated = false,
                     isConnected = isThisConnected,
                     hasBleMidiService = true,
@@ -218,15 +271,24 @@ class AndroidMidiDriver(
         // 2. Add previously discovered BLE devices
         for ((address, dev) in discoveredBluetoothDevices) {
             if (deviceList.none { it.bluetoothAddress == address || it.id == "ble_$address" }) {
+                val capability = discoveredDeviceCapabilities[address] ?: PianoDeviceCapability.UNKNOWN_BLUETOOTH
+                val hasMidiService = (capability == PianoDeviceCapability.BLE_MIDI_VERIFIED)
+                val devName = try {
+                    dev.name ?: "Thiết bị không tên"
+                } catch (e: SecurityException) {
+                    "Thiết bị BLE (${address.takeLast(5)})"
+                }
+
                 deviceList.add(
                     PianoDevice(
                         id = "ble_$address",
-                        name = dev.name ?: "Thiết bị BLE (${address.takeLast(5)})",
+                        name = devName,
                         type = DeviceType.BLUETOOTH_MIDI,
+                        capability = capability,
                         isSimulated = false,
-                        isConnected = (_connectedDevice.value?.bluetoothAddress == address),
+                        isConnected = (_connectedDevice.value?.bluetoothAddress == address && _connectionState.value == DeviceConnectionState.CONNECTED),
                         bluetoothAddress = address,
-                        hasBleMidiService = true
+                        hasBleMidiService = hasMidiService
                     )
                 )
             }
@@ -237,32 +299,48 @@ class AndroidMidiDriver(
 
     @SuppressLint("MissingPermission")
     override suspend fun startScan() {
-        startScanWithFilter(useMidiFilter = true)
+        startScanWithMode(ScanMode.MIDI_ONLY)
     }
 
     @SuppressLint("MissingPermission")
-    fun startScanWithFilter(useMidiFilter: Boolean) {
+    fun startScanWithMode(mode: ScanMode) {
         val adapter = bluetoothAdapter
-        if (adapter == null || !adapter.isEnabled) {
-            Log.w(TAG, "Bluetooth is not enabled or not supported")
+        if (adapter == null) {
+            _lastErrorCode.value = MidiErrorCodes.BT_NOT_SUPPORTED
+            _lastErrorMessage.value = "Thiết bị này không hỗ trợ phần cứng Bluetooth."
             _connectionState.value = DeviceConnectionState.DISCONNECTED
-            refreshDevices()
             return
         }
 
-        val scanner: BluetoothLeScanner? = adapter.bluetoothLeScanner
+        if (!adapter.isEnabled) {
+            _lastErrorCode.value = MidiErrorCodes.BT_DISABLED
+            _lastErrorMessage.value = "Bluetooth đang tắt. Hãy bật Bluetooth trong Cài đặt để kết nối đàn."
+            _connectionState.value = DeviceConnectionState.DISCONNECTED
+            return
+        }
+
+        val scanner: BluetoothLeScanner? = try {
+            adapter.bluetoothLeScanner
+        } catch (e: SecurityException) {
+            _lastErrorCode.value = MidiErrorCodes.BT_PERMISSION_DENIED
+            _lastErrorMessage.value = "Chưa được cấp quyền quét Bluetooth."
+            return
+        }
+
         if (scanner == null) {
-            Log.w(TAG, "BluetoothLeScanner is not available")
-            refreshDevices()
+            _lastErrorCode.value = MidiErrorCodes.BT_DISABLED
+            _lastErrorMessage.value = "Không thể khởi tạo bộ quét Bluetooth LE."
             return
         }
 
         _isBleScanning.value = true
         _connectionState.value = DeviceConnectionState.SCANNING
+        _lastErrorCode.value = null
+        _lastErrorMessage.value = null
         refreshDevices()
 
         val filters = mutableListOf<ScanFilter>()
-        if (useMidiFilter) {
+        if (mode == ScanMode.MIDI_ONLY) {
             filters.add(
                 ScanFilter.Builder()
                     .setServiceUuid(BLE_MIDI_PARCEL_UUID)
@@ -277,16 +355,23 @@ class AndroidMidiDriver(
         try {
             scanner.stopScan(bleScanCallback)
             scanner.startScan(filters, settings, bleScanCallback)
+        } catch (e: SecurityException) {
+            _lastErrorCode.value = MidiErrorCodes.BT_PERMISSION_DENIED
+            _lastErrorMessage.value = "Thiếu quyền Bluetooth để quét thiết bị."
+            _isBleScanning.value = false
+            return
         } catch (e: Exception) {
             Log.e(TAG, "Exception starting BLE scan", e)
             _isBleScanning.value = false
+            _lastErrorCode.value = "BLE_SCAN_ERROR"
+            _lastErrorMessage.value = "Lỗi khi quét: ${e.localizedMessage}"
             return
         }
 
-        // Auto-stop scan after 10 seconds
+        // Auto-stop scan after 12 seconds
         scanTimeoutJob?.cancel()
         scanTimeoutJob = scope.launch {
-            delay(10_000L)
+            delay(12_000L)
             stopScan()
         }
     }
@@ -299,6 +384,8 @@ class AndroidMidiDriver(
         if (_isBleScanning.value) {
             try {
                 bluetoothAdapter?.bluetoothLeScanner?.stopScan(bleScanCallback)
+            } catch (e: SecurityException) {
+                Log.e(TAG, "SecurityException stopping scan", e)
             } catch (e: Exception) {
                 Log.e(TAG, "Error stopping BLE scan", e)
             }
@@ -316,89 +403,152 @@ class AndroidMidiDriver(
 
     @SuppressLint("MissingPermission")
     override suspend fun connectDevice(device: PianoDevice) {
-        val manager = midiManager ?: run {
+        stopScan()
+
+        if (!device.hasBleMidiService && device.capability == PianoDeviceCapability.BLUETOOTH_AUDIO_ONLY) {
+            _lastErrorCode.value = MidiErrorCodes.BLE_MIDI_SERVICE_NOT_FOUND
+            _lastErrorMessage.value = "Thiết bị này có thể là kênh âm thanh Bluetooth (Audio). MIDI điều khiển nốt có thể xuất hiện bằng một thiết bị khác hoặc qua USB MIDI."
             _connectionState.value = DeviceConnectionState.ERROR
             return
         }
 
-        // 1. Disconnect any existing device
+        val manager = midiManager ?: run {
+            _lastErrorCode.value = "MIDI_SERVICE_UNAVAILABLE"
+            _lastErrorMessage.value = "Hệ thống Android MIDI không khả dụng trên thiết bị này."
+            _connectionState.value = DeviceConnectionState.ERROR
+            return
+        }
+
         disconnectDevice()
 
         _connectionState.value = DeviceConnectionState.CONNECTING
+        _lastErrorCode.value = null
+        _lastErrorMessage.value = null
 
-        // Check if device is a scanned BluetoothDevice that needs openBluetoothDevice
         val btDevice = device.bluetoothAddress?.let { discoveredBluetoothDevices[it] }
 
         if (btDevice != null && device.type == DeviceType.BLUETOOTH_MIDI) {
-            // BLE Connection via MidiManager.openBluetoothDevice
             try {
                 manager.openBluetoothDevice(btDevice, { openedDevice ->
                     if (openedDevice == null) {
-                        Log.e(TAG, "MidiManager.openBluetoothDevice returned null for ${btDevice.name}")
+                        Log.e(TAG, "MidiManager.openBluetoothDevice returned null for ${device.name}")
+                        _lastErrorCode.value = MidiErrorCodes.MIDI_DEVICE_OPEN_FAILED
+                        _lastErrorMessage.value = "Không thể mở thiết bị Bluetooth MIDI. Vui lòng thử lại."
                         _connectionState.value = DeviceConnectionState.ERROR
                         return@openBluetoothDevice
                     }
                     attachToMidiDevice(openedDevice, device)
                 }, mainHandler)
+            } catch (e: SecurityException) {
+                _lastErrorCode.value = MidiErrorCodes.BT_PERMISSION_DENIED
+                _lastErrorMessage.value = "Thiếu quyền kết nối Bluetooth (BLUETOOTH_CONNECT)."
+                _connectionState.value = DeviceConnectionState.ERROR
             } catch (e: Exception) {
                 Log.e(TAG, "Error calling openBluetoothDevice", e)
+                _lastErrorCode.value = MidiErrorCodes.MIDI_DEVICE_OPEN_FAILED
+                _lastErrorMessage.value = "Lỗi kết nối Bluetooth MIDI: ${e.localizedMessage}"
                 _connectionState.value = DeviceConnectionState.ERROR
             }
         } else {
-            // USB or already enumerated system MIDI device
             val targetInfo = manager.devices.firstOrNull {
                 "midi_dev_${it.id}" == device.id || (device.bluetoothAddress != null && it.properties.getString("bluetooth_address") == device.bluetoothAddress)
             }
 
             if (targetInfo != null) {
-                manager.openDevice(targetInfo, { openedDevice ->
-                    if (openedDevice == null) {
-                        Log.e(TAG, "MidiManager.openDevice returned null for ${device.name}")
-                        _connectionState.value = DeviceConnectionState.ERROR
-                        return@openDevice
-                    }
-                    attachToMidiDevice(openedDevice, device)
-                }, mainHandler)
+                try {
+                    manager.openDevice(targetInfo, { openedDevice ->
+                        if (openedDevice == null) {
+                            Log.e(TAG, "MidiManager.openDevice returned null for ${device.name}")
+                            _lastErrorCode.value = MidiErrorCodes.MIDI_DEVICE_OPEN_FAILED
+                            _lastErrorMessage.value = "Không thể mở thiết bị MIDI hệ thống/USB."
+                            _connectionState.value = DeviceConnectionState.ERROR
+                            return@openDevice
+                        }
+                        attachToMidiDevice(openedDevice, device)
+                    }, mainHandler)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error opening MIDI device", e)
+                    _lastErrorCode.value = MidiErrorCodes.MIDI_DEVICE_OPEN_FAILED
+                    _lastErrorMessage.value = "Lỗi khi mở thiết bị MIDI: ${e.localizedMessage}"
+                    _connectionState.value = DeviceConnectionState.ERROR
+                }
             } else {
                 Log.e(TAG, "Device target not found for id: ${device.id}")
+                _lastErrorCode.value = MidiErrorCodes.MIDI_DEVICE_OPEN_FAILED
+                _lastErrorMessage.value = "Không tìm thấy thiết bị MIDI trong danh sách hệ thống."
                 _connectionState.value = DeviceConnectionState.ERROR
             }
         }
     }
 
     private fun attachToMidiDevice(openedDevice: MidiDevice, targetDevice: PianoDevice) {
-        activeMidiDevice = openedDevice
-        activeDeviceInfo = openedDevice.info
-
         val portInfoList = openedDevice.info.ports
-        // Find port with TYPE_OUTPUT because piano sends MIDI output into the receiver
-        val outputPortInfo = portInfoList.firstOrNull { it.type == MidiDeviceInfo.PortInfo.TYPE_OUTPUT }
-            ?: portInfoList.firstOrNull()
+        // Rule: Only select ports with TYPE_OUTPUT because piano sends MIDI out into app
+        val outputPorts = portInfoList.filter { it.type == MidiDeviceInfo.PortInfo.TYPE_OUTPUT }
 
-        val portNumber = outputPortInfo?.portNumber ?: 0
+        if (outputPorts.isEmpty()) {
+            Log.e(TAG, "No TYPE_OUTPUT ports found on device ${targetDevice.name}")
+            try {
+                openedDevice.close()
+            } catch (e: Exception) { }
+            _lastErrorCode.value = MidiErrorCodes.MIDI_OUTPUT_PORT_NOT_FOUND
+            _lastErrorMessage.value = "Đàn không có cổng xuất tín hiệu MIDI (TYPE_OUTPUT)."
+            _connectionState.value = DeviceConnectionState.ERROR
+            return
+        }
 
-        try {
-            val outputPort = openedDevice.openOutputPort(portNumber)
-            if (outputPort != null) {
-                activeOutputPort = outputPort
-                outputPort.connect(midiReceiver)
+        var successfullyOpenedPort: MidiOutputPort? = null
+        var openedPortNumber = -1
 
-                val connectedDev = targetDevice.copy(
-                    isConnected = true,
-                    isConnecting = false,
-                    activePortIndex = portNumber,
-                    portCount = portInfoList.size
-                )
-                _connectedDevice.value = connectedDev
-                _connectionState.value = DeviceConnectionState.CONNECTED
-                refreshDevices()
-                Log.i(TAG, "Successfully connected to MIDI device ${targetDevice.name} on output port $portNumber")
-            } else {
-                Log.e(TAG, "Failed to open output port $portNumber on device ${targetDevice.name}")
-                _connectionState.value = DeviceConnectionState.ERROR
+        // Sequentially try opening each output port until one succeeds
+        for (portInfo in outputPorts) {
+            try {
+                val port = openedDevice.openOutputPort(portInfo.portNumber)
+                if (port != null) {
+                    successfullyOpenedPort = port
+                    openedPortNumber = portInfo.portNumber
+                    break
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to open output port ${portInfo.portNumber}, trying next", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error opening MIDI output port", e)
+        }
+
+        if (successfullyOpenedPort != null) {
+            activeMidiDevice = openedDevice
+            activeDeviceInfo = openedDevice.info
+            activeOutputPort = successfullyOpenedPort
+
+            parser.reset()
+            val inputSource = if (targetDevice.type == DeviceType.BLUETOOTH_MIDI) {
+                MidiInputSource.BLUETOOTH_LE
+            } else {
+                MidiInputSource.USB
+            }
+            parser.updateContext(inputSource, targetDevice.id)
+
+            sessionStartMonotonicMs = SystemClock.elapsedRealtime()
+            successfullyOpenedPort.connect(midiReceiver)
+
+            val connectedDev = targetDevice.copy(
+                isConnected = true,
+                isConnecting = false,
+                activePortIndex = openedPortNumber,
+                portCount = portInfoList.size
+            )
+            _connectedDevice.value = connectedDev
+            _connectionState.value = DeviceConnectionState.CONNECTED
+            _lastErrorCode.value = null
+            _lastErrorMessage.value = null
+            refreshDevices()
+            Log.i(TAG, "Successfully connected to MIDI device ${targetDevice.name} on output port $openedPortNumber")
+        } else {
+            try {
+                openedDevice.close()
+            } catch (e: Exception) { }
+            Log.e(TAG, "Failed to open any output ports on device ${targetDevice.name}")
+            _lastErrorCode.value = MidiErrorCodes.MIDI_PORT_OPEN_FAILED
+            _lastErrorMessage.value = "Không thể mở cổng nhận tín hiệu MIDI từ đàn. Hãy rút cáp/tắt bật lại Bluetooth rồi thử lại."
             _connectionState.value = DeviceConnectionState.ERROR
         }
     }
@@ -421,99 +571,73 @@ class AndroidMidiDriver(
     }
 
     private val midiReceiver = object : MidiReceiver() {
-        private var runningStatus = 0
-        private val packetBuffer = IntArray(3)
-        private var packetIndex = 0
-        private var expectedBytes = 0
-
         override fun onSend(msg: ByteArray, offset: Int, count: Int, timestamp: Long) {
-            for (i in 0 until count) {
-                val b = msg[offset + i].toInt() and 0xFF
+            val nowMs = SystemClock.elapsedRealtime()
+            val relativeMs = nowMs - sessionStartMonotonicMs
+            val parsedEvents = parser.parse(msg, offset, count, nowMs)
 
-                // Realtime bytes (0xF8 - 0xFF) can appear anywhere and should not interrupt running status
-                if (b in 0xF8..0xFF) {
-                    continue
-                }
+            val rawSub = msg.copyOfRange(offset.coerceIn(0, msg.size), (offset + count).coerceIn(0, msg.size))
+            val hexString = rawSub.joinToString(" ") { "%02X".format(it) }
 
-                if (b >= 0x80) {
-                    if (b in 0x80..0xEF) {
-                        runningStatus = b
-                        packetIndex = 0
-                        val type = b and 0xF0
-                        expectedBytes = if (type == 0xC0 || type == 0xD0) 1 else 2
-                    } else {
-                        // System common or Sysex (0xF0-0xF7): reset running status
-                        runningStatus = 0
-                        packetIndex = 0
+            for (event in parsedEvents) {
+                when (event) {
+                    is ParsedMidiEvent.Note -> {
+                        val ne = event.noteEvent
+                        scope.launch {
+                            _noteEvents.emit(ne)
+                            _lastDiagnosticEvent.value = ne
+                        }
+
+                        val desc = if (ne.isNoteOn) "Note On [${ne.note}] vel=${ne.velocity}" else "Note Off [${ne.note}]"
+                        addRawLog(
+                            MidiRawLogEntry(
+                                timestampMs = System.currentTimeMillis(),
+                                relativeTimeMs = relativeMs,
+                                description = desc,
+                                rawHexBytes = hexString,
+                                channel = ne.channel,
+                                noteOrCc = ne.note,
+                                valueOrVelocity = ne.velocity
+                            )
+                        )
                     }
-                } else if (runningStatus != 0) {
-                    packetBuffer[packetIndex++] = b
-                    if (packetIndex >= expectedBytes) {
-                        dispatchMidiMessage(runningStatus, packetBuffer[0], packetBuffer.getOrElse(1) { 0 }, timestamp)
-                        packetIndex = 0
+                    is ParsedMidiEvent.Control -> {
+                        val ce = event.controlEvent
+                        scope.launch {
+                            _controlEvents.emit(ce)
+                        }
+
+                        val desc = if (ce.controllerNumber == 64) {
+                            if (ce.value >= 64) "Sustain Pedal DOWN (CC64=${ce.value})" else "Sustain Pedal UP (CC64=${ce.value})"
+                        } else {
+                            "Control Change (CC${ce.controllerNumber}=${ce.value})"
+                        }
+
+                        addRawLog(
+                            MidiRawLogEntry(
+                                timestampMs = System.currentTimeMillis(),
+                                relativeTimeMs = relativeMs,
+                                description = desc,
+                                rawHexBytes = hexString,
+                                channel = ce.channel,
+                                noteOrCc = ce.controllerNumber,
+                                valueOrVelocity = ce.value
+                            )
+                        )
                     }
                 }
             }
         }
     }
 
-    private fun dispatchMidiMessage(status: Int, byte1: Int, byte2: Int, timestamp: Long) {
-        val type = status and 0xF0
-        val channel = status and 0x0F
-        val nowMs = SystemClock.elapsedRealtime()
-        val devId = _connectedDevice.value?.id ?: "midi_device"
-        val inputSource = if (_connectedDevice.value?.type == DeviceType.BLUETOOTH_MIDI) {
-            MidiInputSource.BLUETOOTH_LE
-        } else {
-            MidiInputSource.USB
-        }
+    private fun addRawLog(entry: MidiRawLogEntry) {
+        val current = _rawLogRingBuffer.value
+        val updated = (listOf(entry) + current).take(300)
+        _rawLogRingBuffer.value = updated
+    }
 
-        when (type) {
-            0x80 -> { // Note Off
-                val event = MidiNoteEvent(
-                    channel = channel,
-                    note = byte1,
-                    velocity = byte2,
-                    isNoteOn = false,
-                    timestampMs = nowMs,
-                    inputSource = inputSource,
-                    deviceId = devId
-                )
-                scope.launch {
-                    _noteEvents.emit(event)
-                    _lastDiagnosticEvent.value = event
-                }
-            }
-            0x90 -> { // Note On (velocity 0 is Note Off)
-                val isNoteOn = byte2 > 0
-                val event = MidiNoteEvent(
-                    channel = channel,
-                    note = byte1,
-                    velocity = byte2,
-                    isNoteOn = isNoteOn,
-                    timestampMs = nowMs,
-                    inputSource = inputSource,
-                    deviceId = devId
-                )
-                scope.launch {
-                    _noteEvents.emit(event)
-                    _lastDiagnosticEvent.value = event
-                }
-            }
-            0xB0 -> { // Control Change (e.g. Sustain CC64)
-                val event = MidiControlEvent(
-                    channel = channel,
-                    controllerNumber = byte1,
-                    value = byte2,
-                    timestampMs = nowMs,
-                    inputSource = inputSource,
-                    deviceId = devId
-                )
-                scope.launch {
-                    _controlEvents.emit(event)
-                }
-            }
-        }
+    fun clearRawLogs() {
+        _rawLogRingBuffer.value = emptyList()
     }
 
     override fun onVirtualKeyPressed(midiNote: Int, velocity: Int) {

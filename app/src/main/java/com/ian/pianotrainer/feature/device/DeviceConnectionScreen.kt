@@ -1,13 +1,16 @@
 package com.ian.pianotrainer.feature.device
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,22 +30,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.Cable
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Piano
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -50,8 +55,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,14 +69,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ian.pianotrainer.R
+import com.ian.pianotrainer.core.designsystem.DangerButton
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoError
 import com.ian.pianotrainer.core.designsystem.PianoOutline
+import com.ian.pianotrainer.core.designsystem.PianoOutlinedButton
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryContainer
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryDark
@@ -79,18 +88,17 @@ import com.ian.pianotrainer.core.designsystem.PianoSurface
 import com.ian.pianotrainer.core.designsystem.PianoSurfaceVariant
 import com.ian.pianotrainer.core.designsystem.PianoTextPrimary
 import com.ian.pianotrainer.core.designsystem.PianoTextSecondary
-import com.ian.pianotrainer.core.designsystem.PianoWarning
+import com.ian.pianotrainer.core.designsystem.PrimaryButton
+import com.ian.pianotrainer.core.designsystem.SectionHeader
 import com.ian.pianotrainer.core.music.NoteHelper
-import com.ian.pianotrainer.core.ui.AppTopBar
-import com.ian.pianotrainer.core.ui.DangerButton
-import com.ian.pianotrainer.core.ui.PianoOutlinedButton
-import com.ian.pianotrainer.core.ui.PrimaryButton
-import com.ian.pianotrainer.core.ui.SectionHeader
 import com.ian.pianotrainer.domain.model.DeviceConnectionState
 import com.ian.pianotrainer.domain.model.DeviceType
 import com.ian.pianotrainer.domain.model.NoteNamingMode
 import com.ian.pianotrainer.domain.model.PianoDevice
+import com.ian.pianotrainer.domain.model.PianoDeviceCapability
+import com.ian.pianotrainer.domain.model.ScanMode
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceConnectionScreen(
     viewModel: DeviceViewModel,
@@ -100,52 +108,145 @@ fun DeviceConnectionScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    var hasBluetoothPermission by remember { mutableStateOf(false) }
-    var hasMicPermission by remember { mutableStateOf(false) }
-    var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
-
-    val blePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        arrayOf(
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.BLUETOOTH_CONNECT
-        )
-    } else {
-        arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.BLUETOOTH,
-            Manifest.permission.BLUETOOTH_ADMIN
-        )
+    val blePermissions = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT
+            )
+        } else {
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        }
     }
+
+    var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
 
     val blePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         val allGranted = results.values.all { it }
-        hasBluetoothPermission = allGranted
         if (allGranted) {
             permissionDeniedMessage = null
-            viewModel.startScan(useMidiFilter = true)
+            viewModel.onPermissionResult(true)
         } else {
-            permissionDeniedMessage = "Cần cấp quyền Bluetooth/Vị trí để tìm kiếm đàn MIDI qua Bluetooth LE."
+            permissionDeniedMessage = "Cần cấp quyền Bluetooth/Vị trí để tìm và kết nối với đàn piano."
+            viewModel.onPermissionResult(false)
         }
     }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasMicPermission = isGranted
-        if (isGranted) {
+    ) { granted ->
+        if (granted) {
             viewModel.toggleMicrophoneInput(true)
         } else {
-            permissionDeniedMessage = "Cần cấp quyền Microphone để sử dụng tính năng nhận diện nốt qua âm thanh."
+            permissionDeniedMessage = "Cần cấp quyền Microphone để ghi âm và nhận diện cao độ phím đàn qua mic."
         }
+    }
+
+    fun hasBlePermissions(): Boolean {
+        return blePermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    fun isBluetoothSupported(): Boolean {
+        val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        return bm?.adapter != null
+    }
+
+    fun isBluetoothEnabled(): Boolean {
+        val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        return bm?.adapter?.isEnabled == true
+    }
+
+    fun triggerScan(mode: ScanMode) {
+        viewModel.requestScan(
+            mode = mode,
+            isBluetoothSupported = isBluetoothSupported(),
+            isBluetoothEnabled = isBluetoothEnabled(),
+            hasPermission = hasBlePermissions(),
+            onLaunchPermissionRequest = {
+                blePermissionLauncher.launch(blePermissions)
+            }
+        )
+    }
+
+    if (uiState.errorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearError() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        tint = PianoError,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Thông báo kết nối",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = PianoTextPrimary
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (uiState.errorCode != null) {
+                        Surface(
+                            shape = PianoShapes.small,
+                            color = PianoSurfaceVariant
+                        ) {
+                            Text(
+                                text = "Mã lỗi: ${uiState.errorCode}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = PianoTextSecondary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = uiState.errorMessage ?: "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PianoTextPrimary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearError() }) {
+                    Text("Đã hiểu", color = PianoPrimary)
+                }
+            },
+            containerColor = PianoSurface
+        )
     }
 
     Scaffold(
         topBar = {
-            AppTopBar(
-                title = stringResource(R.string.device_connection_title),
-                onBackClick = onBackClick
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Kết nối đàn Piano / MIDI",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick, modifier = Modifier.testTag("device_back_button")) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Quay lại",
+                            tint = PianoTextPrimary
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = PianoBackground,
+                    titleContentColor = PianoTextPrimary
+                )
             )
         },
         containerColor = PianoBackground,
@@ -158,7 +259,7 @@ fun DeviceConnectionScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Permission Denied Warning Banner
+            // 1. Permission Warning Banner if any
             if (permissionDeniedMessage != null) {
                 item {
                     Card(
@@ -214,7 +315,7 @@ fun DeviceConnectionScreen(
                 }
             }
 
-            // 2. Victor VT02 Audio vs MIDI Notice Banner
+            // 2. Audio vs MIDI Clarification Banner
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -235,13 +336,13 @@ fun DeviceConnectionScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "Phân biệt Bluetooth Audio & Bluetooth MIDI (Victor VT02)",
+                                text = "Phân biệt Bluetooth Audio & Bluetooth MIDI",
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                 color = PianoTextPrimary
                             )
                             Text(
-                                text = "• \"Piano Audio\" trong Cài đặt Bluetooth điện thoại chỉ truyền âm thanh ra loa đàn.\n" +
-                                        "• Để nhận diện phím đàn, ứng dụng này kết nối trực tiếp cổng Bluetooth LE MIDI của đàn hoặc qua cáp USB MIDI / OTG.",
+                                text = "• Kênh Bluetooth Audio trong Cài đặt điện thoại chỉ phát âm thanh qua loa đàn.\n" +
+                                        "• Để nhận diện nốt nhạc khi bấm phím, ứng dụng kết nối trực tiếp cổng Bluetooth LE MIDI của đàn hoặc qua cáp USB MIDI / OTG.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = PianoTextSecondary
                             )
@@ -353,18 +454,13 @@ fun DeviceConnectionScreen(
                                 ) {
                                     PrimaryButton(
                                         text = "Quét BLE MIDI",
-                                        onClick = {
-                                            blePermissionLauncher.launch(blePermissions)
-                                        },
+                                        onClick = { triggerScan(ScanMode.MIDI_ONLY) },
                                         modifier = Modifier.weight(1f),
                                         tag = "start_scan_button"
                                     )
                                     PianoOutlinedButton(
                                         text = "Quét mở rộng",
-                                        onClick = {
-                                            blePermissionLauncher.launch(blePermissions)
-                                            viewModel.startScan(useMidiFilter = false)
-                                        },
+                                        onClick = { triggerScan(ScanMode.EXTENDED) },
                                         modifier = Modifier.weight(1f),
                                         tag = "extended_scan_button"
                                     )
@@ -375,7 +471,7 @@ fun DeviceConnectionScreen(
                 }
             }
 
-            // 4. Microphone Beta Pitch Detection Section
+            // 4. Microphone Pitch Detection Beta
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -517,11 +613,15 @@ private fun DeviceRowCard(
     device: PianoDevice,
     onConnect: () -> Unit
 ) {
+    val isAudioOnly = device.capability == PianoDeviceCapability.BLUETOOTH_AUDIO_ONLY
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(PianoShapes.medium)
-            .clickable { onConnect() }
+            .then(
+                if (!isAudioOnly) Modifier.clickable { onConnect() } else Modifier
+            )
             .testTag("device_item_${device.id}"),
         shape = PianoShapes.medium,
         colors = CardDefaults.cardColors(containerColor = PianoSurface),
@@ -540,18 +640,19 @@ private fun DeviceRowCard(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = PianoSurfaceVariant,
+                    color = if (isAudioOnly) PianoSurfaceVariant else PianoPrimaryContainer.copy(alpha = 0.4f),
                     modifier = Modifier.size(42.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = when (device.type) {
-                                DeviceType.BLUETOOTH_MIDI -> Icons.Default.Bluetooth
-                                DeviceType.USB_MIDI -> Icons.Default.Cable
+                            imageVector = when {
+                                isAudioOnly -> Icons.Default.Headphones
+                                device.type == DeviceType.BLUETOOTH_MIDI -> Icons.Default.Bluetooth
+                                device.type == DeviceType.USB_MIDI -> Icons.Default.Cable
                                 else -> Icons.Default.Mic
                             },
                             contentDescription = null,
-                            tint = PianoPrimary,
+                            tint = if (isAudioOnly) PianoTextSecondary else PianoPrimary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -577,29 +678,61 @@ private fun DeviceRowCard(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
+                        } else if (isAudioOnly) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = PianoSurfaceVariant
+                            ) {
+                                Text(
+                                    text = "Audio",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = PianoTextSecondary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                     Text(
-                        text = "${device.type.displayName}${if (device.bluetoothAddress != null) " • ${device.bluetoothAddress}" else ""} • ${device.signalStrength} dBm",
+                        text = if (isAudioOnly) {
+                            "Thiết bị âm thanh (Không có MIDI) • ${device.signalStrength} dBm"
+                        } else {
+                            "${device.capability.displayName}${if (device.bluetoothAddress != null) " • ${device.bluetoothAddress}" else ""} • ${device.signalStrength} dBm"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = PianoTextSecondary
                     )
                 }
             }
 
-            Surface(
-                shape = CircleShape,
-                color = if (device.isConnected) PianoSuccess.copy(alpha = 0.15f) else PianoPrimaryContainer,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable { onConnect() }
-            ) {
-                Text(
-                    text = if (device.isConnected) "Đã nối" else "Kết nối",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = if (device.isConnected) PianoSuccess else PianoPrimaryDark,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                )
+            if (isAudioOnly) {
+                Surface(
+                    shape = CircleShape,
+                    color = PianoSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Text(
+                        text = "Không hỗ trợ",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        color = PianoTextSecondary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            } else {
+                Surface(
+                    shape = CircleShape,
+                    color = if (device.isConnected) PianoSuccess.copy(alpha = 0.15f) else PianoPrimaryContainer,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onConnect() }
+                ) {
+                    Text(
+                        text = if (device.isConnected) "Đã nối" else "Kết nối",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (device.isConnected) PianoSuccess else PianoPrimaryDark,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
     }

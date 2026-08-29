@@ -1,5 +1,6 @@
 package com.ian.pianotrainer.feature.freeplay
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
@@ -105,6 +106,15 @@ fun FreePlayScreen(
 
     // Enforce landscape layout
     ForceLandscapeWhileVisible()
+
+    // BackHandler when recording
+    BackHandler(enabled = true) {
+        if (uiState.isRecording) {
+            viewModel.stopRecording(showDialog = true)
+        } else {
+            onBackClick()
+        }
+    }
 
     // Save recording dialog
     if (uiState.showSaveDialog) {

@@ -42,6 +42,7 @@ fun FallingNotesCanvas(
     lookAhead: VisualLookAhead = VisualLookAhead.MEDIUM,
     lastResult: NoteResultType? = null,
     lastPlayedMidi: Int? = null,
+    expectedNotes: List<ExerciseNote> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val sortedNotes = remember(notes) {
@@ -51,18 +52,18 @@ fun FallingNotesCanvas(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF090D16))
+            .background(Color(0xFF070B14))
             .testTag("falling_notes_canvas")
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val canvasWidth = size.width
             val canvasHeight = size.height
-            val hitLineY = canvasHeight - 12.dp.toPx()
+            val hitLineY = canvasHeight - 10.dp.toPx()
 
             val lookAheadMs = lookAhead.lookAheadMs.toFloat()
-            val pixelsPerMs = (hitLineY - 10.dp.toPx()) / lookAheadMs
+            val pixelsPerMs = (hitLineY - 8.dp.toPx()) / lookAheadMs
 
-            // Compute visible upcoming notes to help AUTO range calculator
+            // Compute visible upcoming notes to assist AUTO range calculator
             val lookAheadEndMs = currentPositionMs + lookAhead.lookAheadMs
             val upcomingMidiNotes = sortedNotes
                 .filter { it.startMs in currentPositionMs..lookAheadEndMs }
@@ -78,12 +79,31 @@ fun FallingNotesCanvas(
             val keyGeometries = rangeResult.geometries
             val isDenseMode = (rangeMode == KeyboardRangeMode.SIX_OCTAVES || rangeMode == KeyboardRangeMode.FULL_88_KEYS)
 
-            // 1. Draw Background Lanes
+            // 1. Draw Subtle Beat / Timing Guide Lines (Horizontal DAW-like grid)
+            val beatIntervalMs = 500L // ~120 BPM beat interval guide
+            val firstBeatMs = (currentPositionMs / beatIntervalMs) * beatIntervalMs
+            var beatMs = firstBeatMs
+            while (beatMs <= lookAheadEndMs + 500L) {
+                val timeDiff = beatMs - currentPositionMs
+                val lineY = hitLineY - (timeDiff * pixelsPerMs)
+                if (lineY in 0f..canvasHeight) {
+                    val isMeasure = (beatMs % (beatIntervalMs * 4) == 0L)
+                    drawLine(
+                        color = if (isMeasure) Color(0x2238BDF8) else Color(0x0F38BDF8),
+                        start = Offset(0f, lineY),
+                        end = Offset(canvasWidth, lineY),
+                        strokeWidth = if (isMeasure) 1.5.dp.toPx() else 1f
+                    )
+                }
+                beatMs += beatIntervalMs
+            }
+
+            // 2. Draw Background Lanes
             // White key lane dividers
             rangeResult.whiteNotes.forEach { midiNote ->
                 val geom = keyGeometries[midiNote] ?: return@forEach
                 drawLine(
-                    color = Color(0xFF161F30).copy(alpha = 0.5f),
+                    color = Color(0xFF141D2D).copy(alpha = 0.5f),
                     start = Offset(geom.left, 0f),
                     end = Offset(geom.left, canvasHeight),
                     strokeWidth = 1f
@@ -93,45 +113,44 @@ fun FallingNotesCanvas(
             // Darker shaded columns for black keys
             keyGeometries.values.filter { it.isBlack }.forEach { geom ->
                 drawRect(
-                    color = Color(0xFF060910).copy(alpha = 0.55f),
+                    color = Color(0xFF04070E).copy(alpha = 0.65f),
                     topLeft = Offset(geom.left, 0f),
                     size = Size(geom.width, canvasHeight)
                 )
             }
 
-            // 2. Draw Hit Reception Line at bottom with neon gradient glow
+            // 3. Draw Hit Reception Line at bottom with neon gradient glow
             drawLine(
                 brush = Brush.horizontalGradient(
                     listOf(
-                        PianoPrimary.copy(alpha = 0.5f),
+                        PianoPrimary.copy(alpha = 0.45f),
                         PianoAccent.copy(alpha = 0.95f),
-                        PianoPrimary.copy(alpha = 0.5f)
+                        PianoPrimary.copy(alpha = 0.45f)
                     )
                 ),
                 start = Offset(0f, hitLineY),
                 end = Offset(canvasWidth, hitLineY),
-                strokeWidth = 3.dp.toPx()
+                strokeWidth = 2.5.dp.toPx()
             )
 
-            // Subtle glow above hitline
+            // Soft glow zone above hitline
             drawRect(
                 brush = Brush.verticalGradient(
                     listOf(
                         Color.Transparent,
-                        PianoAccent.copy(alpha = 0.12f)
+                        PianoAccent.copy(alpha = 0.14f)
                     ),
-                    startY = hitLineY - 30.dp.toPx(),
+                    startY = hitLineY - 28.dp.toPx(),
                     endY = hitLineY
                 ),
-                topLeft = Offset(0f, hitLineY - 30.dp.toPx()),
-                size = Size(canvasWidth, 30.dp.toPx())
+                topLeft = Offset(0f, hitLineY - 28.dp.toPx()),
+                size = Size(canvasWidth, 28.dp.toPx())
             )
 
-            // 3. Filter notes in visible time window using binary search / range filter
+            // 4. Filter notes in visible time window using binary search
             val minVisibleMs = currentPositionMs - 800L
             val maxVisibleMs = currentPositionMs + lookAhead.lookAheadMs + 1000L
 
-            // Quick binary search bounds
             var low = 0
             var high = sortedNotes.size - 1
             var startIndex = 0
@@ -147,6 +166,7 @@ fun FallingNotesCanvas(
             }
 
             val marginRatio = noteDisplaySize.laneMarginRatio
+            val activeExpectedPitches = expectedNotes.map { it.midiNote }.toSet()
 
             for (i in startIndex until sortedNotes.size) {
                 val note = sortedNotes[i]
@@ -155,34 +175,57 @@ fun FallingNotesCanvas(
                 val geom = keyGeometries[note.midiNote] ?: continue
 
                 val timeUntilHitMs = note.startMs - currentPositionMs
-                val rawHeight = (note.durationMs * pixelsPerMs).coerceIn(12.dp.toPx(), 260.dp.toPx())
+                val rawHeight = (note.durationMs * pixelsPerMs).coerceIn(12.dp.toPx(), 280.dp.toPx())
 
                 val noteBottomY = hitLineY - (timeUntilHitMs * pixelsPerMs)
                 val noteTopY = noteBottomY - rawHeight
 
-                val isCurrentExpected = (currentNoteIndex in notes.indices && notes[currentNoteIndex] == note)
+                if (noteBottomY < 0f || noteTopY > canvasHeight) continue
+
+                val isCurrentExpected = if (activeExpectedPitches.isNotEmpty()) {
+                    note.midiNote in activeExpectedPitches && kotlin.math.abs(note.startMs - currentPositionMs) < 2000L
+                } else {
+                    currentNoteIndex in notes.indices && notes[currentNoteIndex] == note
+                }
                 val isRecentlyPlayed = (lastPlayedMidi == note.midiNote)
 
-                val noteColor = when {
+                val baseColor = when {
                     isRecentlyPlayed && lastResult == NoteResultType.CORRECT -> PianoSuccess
                     isRecentlyPlayed && lastResult == NoteResultType.WRONG -> PianoError
-                    note.hand == HandMode.LEFT -> Color(0xFFF97316) // Vibrant Orange for Left Hand
-                    else -> Color(0xFF00E5FF) // Bright Cyan for Right Hand
+                    note.hand == HandMode.LEFT -> Color(0xFFF97316) // Vibrant Warm Orange
+                    else -> Color(0xFF00E5FF) // Electric Cyan
                 }
 
                 val laneMargin = (geom.width * marginRatio).coerceIn(1f, 3.dp.toPx())
                 val blockX = geom.left + laneMargin
                 val blockW = (geom.width - laneMargin * 2).coerceAtLeast(3.dp.toPx())
 
-                // Draw Note Body
-                drawRoundRect(
-                    color = noteColor,
-                    topLeft = Offset(blockX, noteTopY),
-                    size = Size(blockW, rawHeight),
-                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                // Draw Note Bar with sleek gradient
+                val gradientBrush = Brush.verticalGradient(
+                    listOf(
+                        baseColor.copy(alpha = 0.8f),
+                        baseColor.copy(alpha = 1.0f)
+                    ),
+                    startY = noteTopY,
+                    endY = noteBottomY
                 )
 
-                // Highlight border for expected active note
+                drawRoundRect(
+                    brush = gradientBrush,
+                    topLeft = Offset(blockX, noteTopY),
+                    size = Size(blockW, rawHeight),
+                    cornerRadius = CornerRadius(3.5.dp.toPx(), 3.5.dp.toPx())
+                )
+
+                // Top highlight shine bar
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.5f),
+                    topLeft = Offset(blockX, noteTopY),
+                    size = Size(blockW, 2.5.dp.toPx()),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+
+                // Highlight border for expected active note / chord
                 if (isCurrentExpected) {
                     drawRoundRect(
                         color = Color.White,
@@ -193,18 +236,24 @@ fun FallingNotesCanvas(
                     )
                 }
 
-                // Draw note label if block is wide enough and not dense mode
-                if (blockW > 16.dp.toPx() && rawHeight > 16.dp.toPx() && noteTopY >= 0 && noteBottomY <= canvasHeight) {
+                // Draw Note Label & Finger Number if block is wide enough
+                if (blockW > 15.dp.toPx() && rawHeight > 14.dp.toPx()) {
                     val label = NoteHelper.formatNoteName(note.midiNote, namingMode)
+                    val displayText = if (note.fingerNumber > 0 && blockW > 24.dp.toPx()) {
+                        "$label • ${note.fingerNumber}"
+                    } else {
+                        label
+                    }
                     val paint = android.graphics.Paint().apply {
                         color = android.graphics.Color.WHITE
-                        textSize = if (isDenseMode) 8.dp.toPx() else 10.dp.toPx()
+                        textSize = if (isDenseMode) 8.dp.toPx() else 9.5.dp.toPx()
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         textAlign = android.graphics.Paint.Align.CENTER
                         isAntiAlias = true
+                        setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
                     }
                     drawContext.canvas.nativeCanvas.drawText(
-                        label,
+                        displayText,
                         blockX + blockW / 2f,
                         noteBottomY - 4.dp.toPx(),
                         paint

@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -102,6 +105,8 @@ fun PracticeResultScreen(
                     accuracy >= 50f -> "Khá tốt! Hãy tập chậm lại theo máy đập nhịp để tăng độ chính xác nhé."
                     else -> "Đừng nản lòng! Hãy kiên trì luyện tập từng nốt một cùng đàn Victor VT02."
                 }
+
+                val slowBpm = (session.bpm * 0.75f).toInt().coerceAtLeast(30)
 
                 LazyColumn(
                     modifier = Modifier
@@ -194,17 +199,62 @@ fun PracticeResultScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 StatCard(
-                                    title = stringResource(R.string.result_streak),
-                                    value = "${session.correctNotes}",
-                                    icon = Icons.Default.LocalFireDepartment,
-                                    iconTint = PianoGold,
+                                    title = "Tốc độ",
+                                    value = "${session.bpm} BPM",
+                                    icon = Icons.Default.Speed,
+                                    iconTint = PianoPrimaryDark,
                                     modifier = Modifier.weight(1f)
                                 )
                                 StatCard(
                                     title = stringResource(R.string.result_duration),
-                                    value = "${(session.durationMs / 1000).coerceAtLeast(1)} giây",
+                                    value = "${(session.durationMs / 1000).coerceAtLeast(1)}s",
                                     icon = Icons.Default.Timer,
                                     modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+
+                    // Harmono-inspired Practice Recommendation Card
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = PianoShapes.large,
+                            colors = CardDefaults.cardColors(containerColor = PianoSurface),
+                            border = BorderStroke(1.dp, PianoOutline)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lightbulb,
+                                        contentDescription = null,
+                                        tint = PianoGold,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = "Gợi ý luyện tập cá nhân hóa",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = PianoTextPrimary
+                                    )
+                                }
+
+                                val recommendation = when {
+                                    accuracy < 70f -> "Bạn nên luyện tập chậm lại ở tốc độ $slowBpm BPM (75%) với chế độ Chờ nốt đúng (Wait Mode) để ngón tay ghi nhớ vị trí phím chính xác hơn."
+                                    session.wrongNotes > 3 -> "Hãy thử tập riêng từng tay (Tay Phải / Tay Trái) trước khi ghép cả 2 tay lại với nhau."
+                                    accuracy >= 90f -> "Bạn đã chơi rất xuất sắc! Hãy thử thách bản thân bằng cách tăng tốc độ lên ${session.bpm + 10} BPM hoặc chuyển sang chế độ Chạy theo nhịp (In Tempo)."
+                                    else -> "Duy trì nhịp điệu đều đặn và chú ý lắng nghe âm thanh từ loa đàn Victor VT02 để khớp nhịp tốt hơn."
+                                }
+
+                                Text(
+                                    text = recommendation,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = PianoTextSecondary
                                 )
                             }
                         }
@@ -215,8 +265,8 @@ fun PracticeResultScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                .padding(top = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             PrimaryButton(
                                 text = stringResource(R.string.result_retry_button),
@@ -231,6 +281,22 @@ fun PracticeResultScreen(
                                 },
                                 tag = "retry_practice_button"
                             )
+
+                            if (accuracy < 80f) {
+                                PianoOutlinedButton(
+                                    text = "Tập chậm lại ($slowBpm BPM)",
+                                    onClick = {
+                                        onRetryPractice(
+                                            "Tập chậm lại",
+                                            session.sourceType,
+                                            session.sourceId ?: "",
+                                            session.handMode.name,
+                                            slowBpm
+                                        )
+                                    },
+                                    tag = "retry_slow_button"
+                                )
+                            }
 
                             PianoOutlinedButton(
                                 text = stringResource(R.string.result_home_button),

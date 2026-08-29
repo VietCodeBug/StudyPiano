@@ -193,7 +193,7 @@ fun PracticePlayerScreen(
                 )
             }
 
-            // 2. Main Piano Roll / Visualizer Stage (~70% of remaining height)
+            // 2. Main Piano Roll / Visualizer Stage (~72% of remaining height)
             Box(
                 modifier = Modifier
                     .weight(0.72f)
@@ -212,6 +212,7 @@ fun PracticePlayerScreen(
                     lastPlayedMidi = uiState.engineState.lastPlayedNote,
                     displayMode = uiState.displayMode,
                     currentExpectedNote = uiState.engineState.currentExpectedNote,
+                    expectedNotes = uiState.engineState.currentExpectedNotes,
                     modifier = Modifier.fillMaxSize()
                 )
 
@@ -255,17 +256,18 @@ fun PracticePlayerScreen(
             }
 
             // 3. Piano Keyboard at bottom edge (~28% of height)
-            val targetHighlight = uiState.engineState.currentExpectedNote?.let { note ->
-                listOf(
-                    KeyHighlight(
-                        midiNote = note.midiNote,
-                        color = if (note.hand == HandMode.LEFT) Color(0xFFF97316) else PianoPrimary,
-                        label = note.noteName,
-                        fingerNumber = note.fingerNumber,
-                        hand = note.hand
-                    )
+            val expectedChord = uiState.engineState.currentExpectedNotes.ifEmpty {
+                listOfNotNull(uiState.engineState.currentExpectedNote)
+            }
+            val targetHighlight = expectedChord.map { note ->
+                KeyHighlight(
+                    midiNote = note.midiNote,
+                    color = if (note.hand == HandMode.LEFT) Color(0xFFF97316) else PianoPrimary,
+                    label = note.noteName,
+                    fingerNumber = note.fingerNumber,
+                    hand = note.hand
                 )
-            } ?: emptyList()
+            }
 
             PianoKeyboardView(
                 onKeyPressed = viewModel::onVirtualKeyPressed,
@@ -816,6 +818,7 @@ fun PracticeVisualizer(
     lastPlayedMidi: Int?,
     displayMode: DisplayMode,
     currentExpectedNote: ExerciseNote?,
+    expectedNotes: List<ExerciseNote> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -834,6 +837,7 @@ fun PracticeVisualizer(
                 lookAhead = lookAhead,
                 lastResult = lastResult,
                 lastPlayedMidi = lastPlayedMidi,
+                expectedNotes = expectedNotes,
                 modifier = Modifier.fillMaxSize()
             )
         } else {

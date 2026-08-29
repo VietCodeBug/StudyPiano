@@ -20,8 +20,12 @@ import java.io.DataOutputStream
 
 class PianoTrainerUnitTest {
 
-    class MockPracticeClock(var currentTime: Long = 1000L) : PracticeClock {
-        override fun now(): Long = currentTime
+    class MockPracticeClock(
+        var monotonicTime: Long = 1000L,
+        var wallTime: Long = 1700000000000L
+    ) : PracticeClock {
+        override fun elapsedRealtime(): Long = monotonicTime
+        override fun currentTimeMillis(): Long = wallTime
     }
 
     @Test

@@ -11,6 +11,7 @@ data class PracticeEngineState(
     val currentNoteIndex: Int = 0,
     val totalNotes: Int = 0,
     val currentExpectedNote: ExerciseNote? = null,
+    val currentExpectedNotes: List<ExerciseNote> = emptyList(),
     val correctNotesCount: Int = 0,
     val wrongNotesCount: Int = 0,
     val missedNotesCount: Int = 0,
@@ -41,6 +42,7 @@ interface PracticeEngine {
     )
     fun processPlayedNote(midiNote: Int, velocity: Int)
     fun setLooping(enabled: Boolean)
+    fun setLoopRange(startIndex: Int, endIndex: Int)
     fun tickTimer()
     fun pause()
     fun resume()

@@ -42,6 +42,12 @@ class RealPracticeEngine(
     private var lapCounter: Int = 1
     private val recordedNoteResults = mutableListOf<PracticeNoteResult>()
 
+    private var loopStartIndex: Int = 0
+    private var loopEndIndex: Int = Int.MAX_VALUE
+
+    // Chord tracking: keeps track of MIDI notes in the current expected chord that have been hit
+    private val currentChordHitNotes = mutableSetOf<Int>()
+
     override fun startPractice(
         configuration: PracticeConfiguration,
         isLoopingEnabled: Boolean,
@@ -50,6 +56,9 @@ class RealPracticeEngine(
         currentConfig = configuration
         isLooping = isLoopingEnabled
         targetDurationSec = targetDurationSeconds
+        loopStartIndex = 0
+        loopEndIndex = Int.MAX_VALUE
+        currentChordHitNotes.clear()
 
         sessionWallStartTimeMs = clock.currentTimeMillis()
         lastResumeMonotonicMs = clock.elapsedRealtime()
@@ -59,7 +68,20 @@ class RealPracticeEngine(
         lapCounter = 1
         recordedNoteResults.clear()
 
-        val notes = configuration.notes
+        val rawNotes = configuration.notes
+        val notes = if (rawNotes.size > 1 && rawNotes.all { it.startMs == 0L }) {
+            val msPerBeat = (60000.0 / configuration.bpm.coerceIn(30, 240))
+            var curMs = 0L
+            rawNotes.map { n ->
+                val durMs = (n.durationBeats * msPerBeat).toLong().coerceAtLeast(150L)
+                val note = n.copy(startMs = curMs, durationMs = durMs)
+                curMs += durMs
+                note
+            }
+        } else {
+            rawNotes
+        }
+        currentConfig = configuration.copy(notes = notes)
         songDurationMs = if (notes.isNotEmpty()) {
             val lastNote = notes.maxByOrNull { it.startMs + it.durationMs }
             (lastNote?.let { it.startMs + it.durationMs } ?: 0L).coerceAtLeast(1000L)
@@ -68,10 +90,13 @@ class RealPracticeEngine(
         }
 
         val firstNote = notes.firstOrNull()
+        val initialExpectedNotes = getExpectedNotesForIndex(0, notes)
+
         _state.value = PracticeEngineState(
             currentNoteIndex = 0,
             totalNotes = notes.size,
             currentExpectedNote = firstNote,
+            currentExpectedNotes = initialExpectedNotes,
             correctNotesCount = 0,
             wrongNotesCount = 0,
             missedNotesCount = 0,
@@ -95,6 +120,25 @@ class RealPracticeEngine(
 
     override fun setLooping(enabled: Boolean) {
         isLooping = enabled
+    }
+
+    override fun setLoopRange(startIndex: Int, endIndex: Int) {
+        loopStartIndex = startIndex.coerceAtLeast(0)
+        loopEndIndex = endIndex.coerceAtLeast(loopStartIndex)
+        isLooping = true
+    }
+
+    private fun getExpectedNotesForIndex(index: Int, notes: List<ExerciseNote>): List<ExerciseNote> {
+        if (index !in notes.indices) return emptyList()
+        val anchor = notes[index]
+        // Group all notes that start within 25ms of the anchor note (chord)
+        val chordNotes = mutableListOf<ExerciseNote>()
+        var i = index
+        while (i < notes.size && abs(notes[i].startMs - anchor.startMs) <= 25L) {
+            chordNotes.add(notes[i])
+            i++
+        }
+        return chordNotes
     }
 
     override fun tickTimer() {
@@ -259,71 +303,116 @@ class RealPracticeEngine(
             }
         } else {
             // WAIT_FOR_NOTE mode:
-            val expected = currentState.currentExpectedNote ?: return
-            val isCorrect = (expected.midiNote == midiNote)
+            val expectedChord = currentState.currentExpectedNotes.ifEmpty {
+                listOfNotNull(currentState.currentExpectedNote)
+            }
+            if (expectedChord.isEmpty()) return
 
-            val resultType = if (isCorrect) NoteResultType.CORRECT else NoteResultType.WRONG
+            // Check if played note matches any remaining expected note in current chord
+            val matchingNote = expectedChord.firstOrNull { it.midiNote == midiNote && it.midiNote !in currentChordHitNotes }
 
-            recordedNoteResults.add(
-                PracticeNoteResult(
-                    sessionId = "",
-                    expectedMidiNote = expected.midiNote,
-                    playedMidiNote = midiNote,
-                    timingOffsetMs = 0L,
-                    resultType = resultType,
-                    occurredAtOffsetMs = currentActiveMs
+            if (matchingNote != null) {
+                // Correct key for part of the chord
+                currentChordHitNotes.add(midiNote)
+
+                recordedNoteResults.add(
+                    PracticeNoteResult(
+                        sessionId = "",
+                        expectedMidiNote = matchingNote.midiNote,
+                        playedMidiNote = midiNote,
+                        timingOffsetMs = 0L,
+                        resultType = NoteResultType.CORRECT,
+                        occurredAtOffsetMs = currentActiveMs
+                    )
                 )
-            )
 
-            if (isCorrect) {
-                val nextIndex = currentState.currentNoteIndex + 1
                 val newCorrect = currentState.correctNotesCount + 1
                 val newStreak = currentState.currentStreak + 1
                 val newMaxStreak = maxOf(newStreak, currentState.maxStreak)
 
-                if (nextIndex < notes.size) {
-                    val nextNote = notes[nextIndex]
+                val allChordHit = expectedChord.all { it.midiNote in currentChordHitNotes }
+
+                if (allChordHit) {
+                    // Full chord completed, advance to next chord / note
+                    currentChordHitNotes.clear()
+                    val chordSize = expectedChord.size
+                    var nextIndex = currentState.currentNoteIndex + chordSize
+
+                    // Check loop range limit
+                    val isBeyondLoopEnd = nextIndex > loopEndIndex || nextIndex >= notes.size
+
+                    if (!isBeyondLoopEnd) {
+                        val nextNote = notes[nextIndex]
+                        val nextChord = getExpectedNotesForIndex(nextIndex, notes)
+                        _state.value = currentState.copy(
+                            currentNoteIndex = nextIndex,
+                            currentExpectedNote = nextNote,
+                            currentExpectedNotes = nextChord,
+                            currentPositionMs = nextNote.startMs,
+                            correctNotesCount = newCorrect,
+                            currentStreak = newStreak,
+                            maxStreak = newMaxStreak,
+                            lastEvaluatedResult = NoteResultType.CORRECT,
+                            lastPlayedNote = midiNote
+                        )
+                    } else {
+                        if (isLooping) {
+                            lapCounter++
+                            val targetStart = loopStartIndex.coerceIn(0, notes.lastIndex)
+                            val first = notes.getOrNull(targetStart)
+                            val firstChord = getExpectedNotesForIndex(targetStart, notes)
+                            _state.value = currentState.copy(
+                                currentNoteIndex = targetStart,
+                                currentExpectedNote = first,
+                                currentExpectedNotes = firstChord,
+                                currentPositionMs = first?.startMs ?: 0L,
+                                correctNotesCount = newCorrect,
+                                currentStreak = newStreak,
+                                maxStreak = newMaxStreak,
+                                lastEvaluatedResult = NoteResultType.CORRECT,
+                                lastPlayedNote = midiNote,
+                                lapCount = lapCounter,
+                                isFinished = false
+                            )
+                        } else {
+                            _state.value = currentState.copy(
+                                currentNoteIndex = nextIndex,
+                                currentExpectedNote = null,
+                                currentExpectedNotes = emptyList(),
+                                currentPositionMs = songDurationMs,
+                                correctNotesCount = newCorrect,
+                                currentStreak = newStreak,
+                                maxStreak = newMaxStreak,
+                                lastEvaluatedResult = NoteResultType.CORRECT,
+                                lastPlayedNote = midiNote,
+                                isFinished = true
+                            )
+                        }
+                    }
+                } else {
+                    // Partial chord hit: stay at current chord, update streak & stats
                     _state.value = currentState.copy(
-                        currentNoteIndex = nextIndex,
-                        currentExpectedNote = nextNote,
-                        currentPositionMs = nextNote.startMs,
                         correctNotesCount = newCorrect,
                         currentStreak = newStreak,
                         maxStreak = newMaxStreak,
                         lastEvaluatedResult = NoteResultType.CORRECT,
                         lastPlayedNote = midiNote
                     )
-                } else {
-                    if (isLooping) {
-                        lapCounter++
-                        val first = notes.firstOrNull()
-                        _state.value = currentState.copy(
-                            currentNoteIndex = 0,
-                            currentExpectedNote = first,
-                            currentPositionMs = first?.startMs ?: 0L,
-                            correctNotesCount = newCorrect,
-                            currentStreak = newStreak,
-                            maxStreak = newMaxStreak,
-                            lastEvaluatedResult = NoteResultType.CORRECT,
-                            lastPlayedNote = midiNote,
-                            lapCount = lapCounter,
-                            isFinished = false
-                        )
-                    } else {
-                        _state.value = currentState.copy(
-                            currentNoteIndex = nextIndex,
-                            currentExpectedNote = null,
-                            currentPositionMs = songDurationMs,
-                            correctNotesCount = newCorrect,
-                            currentStreak = newStreak,
-                            maxStreak = newMaxStreak,
-                            lastEvaluatedResult = NoteResultType.CORRECT,
-                            lastPlayedNote = midiNote,
-                            isFinished = true
-                        )
-                    }
                 }
             } else {
+                // Wrong note
+                val expectedNote = currentState.currentExpectedNote
+                recordedNoteResults.add(
+                    PracticeNoteResult(
+                        sessionId = "",
+                        expectedMidiNote = expectedNote?.midiNote ?: 0,
+                        playedMidiNote = midiNote,
+                        timingOffsetMs = 0L,
+                        resultType = NoteResultType.WRONG,
+                        occurredAtOffsetMs = currentActiveMs
+                    )
+                )
+
                 _state.value = currentState.copy(
                     wrongNotesCount = currentState.wrongNotesCount + 1,
                     currentStreak = 0,

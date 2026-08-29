@@ -383,6 +383,7 @@ class MainActivity : ComponentActivity() {
                             val viewModel: MidiDiagnosticViewModel = viewModel(
                                 factory = MidiDiagnosticViewModel.Factory(
                                     midiInput = appContainer.midiInput,
+                                    deviceManager = appContainer.pianoDeviceManager,
                                     settingsRepository = appContainer.settingsRepository
                                 )
                             )

@@ -222,51 +222,10 @@ fun MySongsScreen(
                     )
 
                     Text(
-                        text = "Gợi ý ID nhanh:",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        text = "Hỗ trợ nhập Sequence ID hoặc link tải tệp trực tiếp (.mid / .zip / .pianopack).",
+                        style = MaterialTheme.typography.bodySmall,
                         color = PianoTextSecondary
                     )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Surface(
-                            shape = PianoShapes.small,
-                            color = PianoPrimaryContainer,
-                            modifier = Modifier
-                                .clip(PianoShapes.small)
-                                .clickable {
-                                    downloadUrlText = "3813152"
-                                    downloadTitleText = "Flower Dance - DJ Okawari"
-                                }
-                        ) {
-                            Text(
-                                text = "Flower Dance",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                                color = PianoPrimary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            )
-                        }
-
-                        Surface(
-                            shape = PianoShapes.small,
-                            color = PianoPrimaryContainer,
-                            modifier = Modifier
-                                .clip(PianoShapes.small)
-                                .clickable {
-                                    downloadUrlText = "3134103"
-                                    downloadTitleText = "River Flows in You - Yiruma"
-                                }
-                        ) {
-                            Text(
-                                text = "River Flows in You",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                                color = PianoPrimary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
                 }
             },
             confirmButton = {

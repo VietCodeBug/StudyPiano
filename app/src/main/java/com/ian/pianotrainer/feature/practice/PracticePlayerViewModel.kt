@@ -580,10 +580,6 @@ class PracticePlayerViewModel(
         _visualLookAhead.value = lookAhead
     }
 
-    fun toggleToolbar() {
-        _isToolbarVisible.value = !_isToolbarVisible.value
-    }
-
     fun setToolbarVisible(visible: Boolean) {
         _isToolbarVisible.value = visible
     }
@@ -667,6 +663,30 @@ class PracticePlayerViewModel(
         _gradualSpeedUpEnabled.value = !_gradualSpeedUpEnabled.value
     }
 
+    private var toolbarAutoHideJob: Job? = null
+
+    fun toggleToolbar() {
+        _isToolbarVisible.value = !_isToolbarVisible.value
+        if (_isToolbarVisible.value) {
+            scheduleToolbarAutoHide()
+        }
+    }
+
+    fun showToolbarTemporarily() {
+        _isToolbarVisible.value = true
+        scheduleToolbarAutoHide()
+    }
+
+    private fun scheduleToolbarAutoHide() {
+        toolbarAutoHideJob?.cancel()
+        if (!practiceEngine.state.value.isPaused && !_isCountInActive.value) {
+            toolbarAutoHideJob = viewModelScope.launch {
+                delay(3000L)
+                _isToolbarVisible.value = false
+            }
+        }
+    }
+
     fun togglePause() {
         val currentEngine = practiceEngine.state.value
         if (currentEngine.isPaused) {
@@ -679,7 +699,10 @@ class PracticePlayerViewModel(
                 lastActiveMetronomeBpm = effectiveBpm
                 metronomeController.start(effectiveBpm)
             }
+            scheduleToolbarAutoHide()
         } else {
+            toolbarAutoHideJob?.cancel()
+            _isToolbarVisible.value = true
             practiceEngine.pause()
             midiPlaybackScheduler.pause()
             pianoAudioEngine.allNotesOff()

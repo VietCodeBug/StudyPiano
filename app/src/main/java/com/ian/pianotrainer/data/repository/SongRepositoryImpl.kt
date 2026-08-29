@@ -506,23 +506,31 @@ class SongRepositoryImpl(
             }
         }
 
-        // Also seed any bundled MIDI files in assets/starter_songs (e.g. Flower Dance, Amazing Grace...)
+        // Also seed verified bundled MIDI files defined in assets/starter_songs/licenses.json
         try {
-            val starterFiles = context.assets.list("starter_songs") ?: emptyArray()
-            for (fileName in starterFiles) {
-                if (fileName.endsWith(".mid", ignoreCase = true) || fileName.endsWith(".midi", ignoreCase = true)) {
-                    val cleanTitle = fileName.substringBeforeLast(".").replace("_", " ").trim()
-                    val existingSongs = importedSongDao.getAllSongsList()
-                    if (existingSongs.none { it.displayName.equals(cleanTitle, ignoreCase = true) }) {
-                        context.assets.open("starter_songs/$fileName").use { stream ->
-                            val result = importMidiFile(
-                                inputStream = stream,
-                                originalFileName = fileName,
-                                fileSize = 1024L,
-                                customTitle = cleanTitle
-                            )
-                            if (result.isSuccess) {
-                                insertedCount++
+            val licensesJson = context.assets.open("starter_songs/licenses.json").bufferedReader().use { it.readText() }
+            val jsonArray = org.json.JSONArray(licensesJson)
+            val existingSongs = importedSongDao.getAllSongsList()
+
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val fileName = obj.optString("file")
+                val title = obj.optString("title", fileName.substringBeforeLast("."))
+                val allowed = obj.optBoolean("redistributionAllowed", false)
+
+                if (allowed && fileName.isNotBlank()) {
+                    if (existingSongs.none { it.displayName.equals(title, ignoreCase = true) || it.originalFileName == fileName }) {
+                        runCatching {
+                            context.assets.open("starter_songs/$fileName").use { stream ->
+                                val result = importMidiFile(
+                                    inputStream = stream,
+                                    originalFileName = fileName,
+                                    fileSize = 1024L,
+                                    customTitle = title
+                                )
+                                if (result.isSuccess) {
+                                    insertedCount++
+                                }
                             }
                         }
                     }

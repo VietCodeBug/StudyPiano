@@ -29,7 +29,13 @@ class RealPracticeEngine(
 ) : PracticeEngine {
 
     companion object {
-        const val RHYTHM_TOLERANCE_MS = 180L
+        const val DEFAULT_RHYTHM_TOLERANCE_MS = 150L
+    }
+
+    fun getDynamicToleranceMs(): Long {
+        val effectiveBpm = ((currentConfig?.bpm ?: 60) * speedMultiplier).coerceIn(30f, 300f)
+        val beatDurationMs = 60_000.0 / effectiveBpm
+        return (0.30 * beatDurationMs).toLong().coerceIn(80L, 250L)
     }
 
     private val _state = MutableStateFlow(PracticeEngineState())
@@ -306,10 +312,11 @@ class RealPracticeEngine(
             val currentPos = basePositionMs + deltaScaledMs
 
             var newMissed = currentState.missedNotesCount
+            val toleranceMs = getDynamicToleranceMs()
 
-            // Check if current chord(s) expired past RHYTHM_TOLERANCE_MS
+            // Check if current chord(s) expired past dynamic tolerance window
             while (currentChordIndex < expectedChords.size &&
-                (expectedChords[currentChordIndex].startMs + RHYTHM_TOLERANCE_MS) < currentPos
+                (expectedChords[currentChordIndex].startMs + toleranceMs) < currentPos
             ) {
                 val expiredChord = expectedChords[currentChordIndex]
                 val unhitPitches = expiredChord.expectedPitches - currentChordHitNotes
@@ -433,14 +440,15 @@ class RealPracticeEngine(
             if (chord != null) {
                 val timingDiff = currentPos - chord.startMs
                 val isPitchMatch = (midiNote in chord.expectedPitches)
+                val toleranceMs = getDynamicToleranceMs()
 
-                if (isPitchMatch && abs(timingDiff) <= RHYTHM_TOLERANCE_MS) {
+                if (isPitchMatch && abs(timingDiff) <= toleranceMs) {
                     if (midiNote !in currentChordHitNotes) {
                         currentChordHitNotes.add(midiNote)
 
                         val resultType = when {
-                            timingDiff < -50L -> NoteResultType.EARLY
-                            timingDiff > 50L -> NoteResultType.LATE
+                            timingDiff < -45L -> NoteResultType.EARLY
+                            timingDiff > 45L -> NoteResultType.LATE
                             else -> NoteResultType.CORRECT
                         }
 

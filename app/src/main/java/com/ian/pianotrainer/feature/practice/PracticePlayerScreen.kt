@@ -238,6 +238,12 @@ fun PracticePlayerScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        viewModel.showToolbarTemporarily()
+                    }
             ) {
                 FallingNotesCanvas(
                     notes = uiState.exerciseNotes,
@@ -340,7 +346,7 @@ fun PracticePlayerScreen(
                 }
             }
 
-            // 3. Compact Reference Piano Keyboard at bottom edge
+            // 3. Compact Reference Piano Keyboard at bottom edge (58dp <= 20% screen height)
             val expectedChord = uiState.engineState.currentExpectedNotes.ifEmpty {
                 listOfNotNull(uiState.engineState.currentExpectedNote)
             }
@@ -362,7 +368,7 @@ fun PracticePlayerScreen(
                 namingMode = uiState.userSettings.noteNamingMode,
                 lastResult = uiState.engineState.lastEvaluatedResult,
                 lastPlayedMidi = uiState.engineState.lastPlayedNote,
-                keyHeight = 72.dp,
+                keyHeight = 58.dp,
                 onKeyPressed = viewModel::onVirtualKeyPressed,
                 modifier = Modifier
                     .fillMaxWidth()

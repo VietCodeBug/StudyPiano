@@ -1,0 +1,72 @@
+[
+  {
+    "file": "ode_to_joy.mid",
+    "title": "Ode to Joy (Khải hoàn ca)",
+    "composer": "Ludwig van Beethoven",
+    "compositionStatus": "PUBLIC_DOMAIN",
+    "arrangementAuthor": "Open Music Repertoire",
+    "arrangementLicense": "CC0 1.0 Universal / Public Domain",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Ode_to_Joy",
+    "redistributionAllowed": true
+  },
+  {
+    "file": "amazing_grace.mid",
+    "title": "Amazing Grace",
+    "composer": "John Newton",
+    "compositionStatus": "PUBLIC_DOMAIN",
+    "arrangementAuthor": "Open Music Repertoire",
+    "arrangementLicense": "CC0 1.0 Universal / Public Domain",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Amazing_Grace",
+    "redistributionAllowed": true
+  },
+  {
+    "file": "jingle_bells.mid",
+    "title": "Jingle Bells",
+    "composer": "James Lord Pierpont",
+    "compositionStatus": "PUBLIC_DOMAIN",
+    "arrangementAuthor": "Open Music Repertoire",
+    "arrangementLicense": "CC0 1.0 Universal / Public Domain",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Jingle_Bells",
+    "redistributionAllowed": true
+  },
+  {
+    "file": "mary_had_a_little_lamb.mid",
+    "title": "Mary Had a Little Lamb",
+    "composer": "Traditional / Sarah Josepha Hale",
+    "compositionStatus": "PUBLIC_DOMAIN",
+    "arrangementAuthor": "Open Music Repertoire",
+    "arrangementLicense": "CC0 1.0 Universal / Public Domain",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Mary_Had_a_Little_Lamb",
+    "redistributionAllowed": true
+  },
+  {
+    "file": "hot_cross_buns.mid",
+    "title": "Hot Cross Buns",
+    "composer": "Traditional English Nursery Rhyme",
+    "compositionStatus": "PUBLIC_DOMAIN",
+    "arrangementAuthor": "Open Music Repertoire",
+    "arrangementLicense": "CC0 1.0 Universal / Public Domain",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Hot_Cross_Buns",
+    "redistributionAllowed": true
+  },
+  {
+    "file": "twinkle_twinkle_little_star.mid",
+    "title": "Twinkle, Twinkle, Little Star",
+    "composer": "Jane Taylor / Wolfgang Amadeus Mozart",
+    "compositionStatus": "PUBLIC_DOMAIN",
+    "arrangementAuthor": "Open Music Repertoire",
+    "arrangementLicense": "CC0 1.0 Universal / Public Domain",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Twinkle,_Twinkle,_Little_Star",
+    "redistributionAllowed": true
+  },
+  {
+    "file": "frere_jacques.mid",
+    "title": "Frère Jacques (Kìa con bướm vàng)",
+    "composer": "Traditional French Nursery Rhyme",
+    "compositionStatus": "PUBLIC_DOMAIN",
+    "arrangementAuthor": "Open Music Repertoire",
+    "arrangementLicense": "CC0 1.0 Universal / Public Domain",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Fr%C3%A8re_Jacques",
+    "redistributionAllowed": true
+  }
+]

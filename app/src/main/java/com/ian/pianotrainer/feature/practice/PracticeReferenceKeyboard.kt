@@ -48,6 +48,14 @@ fun PracticeReferenceKeyboard(
         targetNotes.associateBy { it.midiNote }
     }
 
+    val labelPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -114,9 +122,9 @@ fun PracticeReferenceKeyboard(
                 val fillColor = when {
                     isEvaluated && lastResult == NoteResultType.CORRECT -> PianoSuccess
                     isEvaluated && lastResult == NoteResultType.WRONG -> PianoError
-                    isPressed && targetHighlight?.hand == HandMode.LEFT -> PianoAccent // Orange for Left hand
-                    isPressed -> PianoPrimary // Cyan/Blue for Right hand
-                    isTarget -> Color(0xFFE2E8F0) // Slight warm glow for target
+                    isPressed && targetHighlight?.hand == HandMode.LEFT -> Color(0xFFF97316) // Orange for Left hand
+                    isPressed -> Color(0xFF00E5FF) // Cyan/Blue for Right hand
+                    isTarget -> Color(0xFFE2E8F0) // Clean off-white
                     else -> Color(0xFFF8FAFC) // Off-white key
                 }
 
@@ -128,7 +136,7 @@ fun PracticeReferenceKeyboard(
                     cornerRadius = CornerRadius(0f, 0f)
                 )
 
-                // White key outline/divider
+                // White key divider line
                 drawLine(
                     color = Color(0xFFCBD5E1),
                     start = Offset(geom.right, 0f),
@@ -136,41 +144,33 @@ fun PracticeReferenceKeyboard(
                     strokeWidth = 1f
                 )
 
-                // Target outline glow if target
+                // Target indicator on key
                 if (isTarget && !isPressed) {
-                    val glowColor = if (targetHighlight?.hand == HandMode.LEFT) PianoAccent else PianoPrimary
+                    val targetColor = if (targetHighlight?.hand == HandMode.LEFT) Color(0xFFF97316) else Color(0xFF00E5FF)
                     drawRect(
-                        color = glowColor.copy(alpha = 0.35f),
+                        color = targetColor.copy(alpha = 0.25f),
                         topLeft = Offset(geom.left, 0f),
                         size = Size(geom.width, totalHeight)
                     )
                     drawRect(
-                        color = glowColor,
-                        topLeft = Offset(geom.left, totalHeight - 6.dp.toPx()),
-                        size = Size(geom.width, 6.dp.toPx())
+                        color = targetColor,
+                        topLeft = Offset(geom.left, totalHeight - 4.dp.toPx()),
+                        size = Size(geom.width, 4.dp.toPx())
                     )
                 }
 
-                // Note label for C keys or when lane is wide enough
+                // Subtle C octave markers (e.g. C1..C8)
                 val isCKey = (midiNote % 12) == 0
-                if ((isCKey || geom.width > 22.dp.toPx()) && geom.width > 12.dp.toPx()) {
-                    val label = when {
-                        isCKey -> "C${(midiNote / 12) - 1}"
-                        else -> com.ian.pianotrainer.core.music.NoteHelper.formatNoteName(midiNote, namingMode)
-                    }
-                    val textColor = if (isPressed || isEvaluated) android.graphics.Color.WHITE else android.graphics.Color.DKGRAY
-                    val paint = android.graphics.Paint().apply {
-                        color = textColor
-                        textSize = (geom.width * 0.38f).coerceIn(8.dp.toPx(), 11.dp.toPx())
-                        textAlign = android.graphics.Paint.Align.CENTER
-                        isAntiAlias = true
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    }
+                if (isCKey) {
+                    val octaveNum = (midiNote / 12) - 1
+                    val label = "C$octaveNum"
+                    labelPaint.color = if (isPressed) android.graphics.Color.WHITE else android.graphics.Color.parseColor("#64748B")
+                    labelPaint.textSize = (geom.width * 0.45f).coerceIn(8.dp.toPx(), 10.dp.toPx())
                     drawContext.canvas.nativeCanvas.drawText(
                         label,
                         geom.centerX,
                         totalHeight - 4.dp.toPx(),
-                        paint
+                        labelPaint
                     )
                 }
             }
@@ -187,8 +187,8 @@ fun PracticeReferenceKeyboard(
                 val fillColor = when {
                     isEvaluated && lastResult == NoteResultType.CORRECT -> PianoSuccess
                     isEvaluated && lastResult == NoteResultType.WRONG -> PianoError
-                    isPressed && targetHighlight?.hand == HandMode.LEFT -> PianoAccent
-                    isPressed -> PianoPrimary
+                    isPressed && targetHighlight?.hand == HandMode.LEFT -> Color(0xFFF97316) // Orange for Left hand
+                    isPressed -> Color(0xFF00E5FF) // Cyan/Blue for Right hand
                     else -> Color(0xFF0F172A) // Sleek slate black
                 }
 
@@ -211,11 +211,11 @@ fun PracticeReferenceKeyboard(
 
                 // Target indicator on black key
                 if (isTarget && !isPressed) {
-                    val glowColor = if (targetHighlight?.hand == HandMode.LEFT) PianoAccent else PianoPrimary
+                    val targetColor = if (targetHighlight?.hand == HandMode.LEFT) Color(0xFFF97316) else Color(0xFF00E5FF)
                     drawRect(
-                        color = glowColor,
-                        topLeft = Offset(geom.left, blackKeyHeight - 5.dp.toPx()),
-                        size = Size(geom.width, 5.dp.toPx())
+                        color = targetColor,
+                        topLeft = Offset(geom.left, blackKeyHeight - 4.dp.toPx()),
+                        size = Size(geom.width, 4.dp.toPx())
                     )
                 }
             }

@@ -179,17 +179,17 @@ fun PracticeResultScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 StatCard(
-                                    title = stringResource(R.string.result_correct_notes),
-                                    value = "${session.correctNotes}",
+                                    title = "Đúng cao độ",
+                                    value = "${uiState.pitchAccuracyPercent}%",
                                     icon = Icons.Default.CheckCircle,
                                     iconTint = PianoSuccess,
                                     modifier = Modifier.weight(1f)
                                 )
                                 StatCard(
-                                    title = stringResource(R.string.result_wrong_notes),
-                                    value = "${session.wrongNotes}",
-                                    icon = Icons.Default.Close,
-                                    iconTint = PianoError,
+                                    title = "Khớp nhịp điệu",
+                                    value = "${uiState.rhythmAccuracyPercent}%",
+                                    icon = Icons.Default.Speed,
+                                    iconTint = PianoPrimary,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -199,9 +199,9 @@ fun PracticeResultScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 StatCard(
-                                    title = "Tốc độ",
-                                    value = "${session.bpm} BPM",
-                                    icon = Icons.Default.Speed,
+                                    title = "Đúng nốt / Sai",
+                                    value = "${session.correctNotes} / ${session.wrongNotes}",
+                                    icon = Icons.Default.AutoAwesome,
                                     iconTint = PianoPrimaryDark,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -215,7 +215,60 @@ fun PracticeResultScreen(
                         }
                     }
 
-                    // Harmono-inspired Practice Recommendation Card
+                    // Weakest Measures Card (if any weak measures detected)
+                    if (uiState.weakMeasures.isNotEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = PianoShapes.large,
+                                colors = CardDefaults.cardColors(containerColor = PianoSurface),
+                                border = BorderStroke(1.dp, Color(0xFFF97316).copy(alpha = 0.5f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lightbulb,
+                                            contentDescription = null,
+                                            tint = Color(0xFFF97316),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "Các ô nhịp cần cải thiện:",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = PianoTextPrimary
+                                        )
+                                    }
+
+                                    uiState.weakMeasures.forEach { weak ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "• Ô nhịp ${weak.measureNumber}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = PianoTextPrimary
+                                            )
+                                            Text(
+                                                text = "${weak.errorCount} lỗi (${weak.accuracyPercent}% đúng)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = PianoError
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Recommendation Card
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),

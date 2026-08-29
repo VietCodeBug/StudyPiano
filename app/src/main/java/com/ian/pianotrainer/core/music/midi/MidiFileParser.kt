@@ -100,7 +100,7 @@ object MidiFileParser {
 
         // 4. Convert all notes from ticks to milliseconds using tempoSegments
         var maxEndMs = 0L
-        val processedTracks = mutableListOf<ParsedMidiTrack>()
+        val rawTrackNotes = mutableListOf<MutableList<ParsedMidiNote>>()
 
         for (rawTrack in rawTracks) {
             val rawSorted = rawTrack.notes.sortedWith(compareBy({ it.startTick }, { it.midiNote }))
@@ -115,8 +115,6 @@ object MidiFileParser {
                     maxEndMs = startMs + durationMs
                 }
 
-                val chordId = "chord_${rn.trackIndex}_${rn.startTick}"
-
                 convertedNotes.add(
                     ParsedMidiNote(
                         trackIndex = rn.trackIndex,
@@ -128,11 +126,41 @@ object MidiFileParser {
                         startMs = startMs,
                         durationMs = durationMs,
                         assignedHand = "BOTH",
-                        chordId = chordId
+                        chordId = null
                     )
                 )
             }
+            rawTrackNotes.add(convertedNotes)
+        }
 
+        // 4b. Global 25ms Chord Grouping across all tracks
+        data class NoteRef(val trackListIdx: Int, val noteIdx: Int, val startMs: Long)
+        val allNotesSorted = mutableListOf<NoteRef>()
+        for (tIdx in rawTrackNotes.indices) {
+            for (nIdx in rawTrackNotes[tIdx].indices) {
+                allNotesSorted.add(NoteRef(tIdx, nIdx, rawTrackNotes[tIdx][nIdx].startMs))
+            }
+        }
+        allNotesSorted.sortBy { it.startMs }
+
+        var chordGroupCounter = 0
+        var anchorStartMs = -1000L
+        var currentChordId = ""
+
+        for (ref in allNotesSorted) {
+            if (anchorStartMs < 0 || (ref.startMs - anchorStartMs) > 25L) {
+                anchorStartMs = ref.startMs
+                chordGroupCounter++
+                currentChordId = "chord_${chordGroupCounter}"
+            }
+            val existing = rawTrackNotes[ref.trackListIdx][ref.noteIdx]
+            rawTrackNotes[ref.trackListIdx][ref.noteIdx] = existing.copy(chordId = currentChordId)
+        }
+
+        val processedTracks = mutableListOf<ParsedMidiTrack>()
+        for (t in rawTracks.indices) {
+            val convertedNotes = rawTrackNotes[t]
+            val rawTrack = rawTracks[t]
             if (convertedNotes.isNotEmpty()) {
                 val minPitch = convertedNotes.minOf { it.midiNote }
                 val maxPitch = convertedNotes.maxOf { it.midiNote }
@@ -189,6 +217,15 @@ object MidiFileParser {
             )
         }
 
+        // Process time signatures with accurate startMs and default 4/4 if missing
+        val sortedSignatures = timeSignatureEvents.sortedBy { it.tick }.toMutableList()
+        if (sortedSignatures.isEmpty() || sortedSignatures.first().tick > 0L) {
+            sortedSignatures.add(0, ParsedTimeSignatureEvent(tick = 0L, startMs = 0L, numerator = 4, denominator = 4))
+        }
+        val finalTimeSignatures = sortedSignatures.map {
+            it.copy(startMs = tickToMs(it.tick, tempoSegments, ticksPerQuarterNote))
+        }
+
         return ParsedMidiFile(
             format = format,
             ticksPerQuarterNote = ticksPerQuarterNote,
@@ -196,7 +233,7 @@ object MidiFileParser {
             defaultBpm = defaultBpm,
             tracks = finalTracks,
             tempos = tempoList,
-            timeSignatures = timeSignatureEvents
+            timeSignatures = finalTimeSignatures
         )
     }
 
@@ -296,7 +333,7 @@ object MidiFileParser {
                             val num = data[0].toInt() and 0xFF
                             val denomPower = data[1].toInt() and 0xFF
                             val denom = 1 shl denomPower
-                            timeSignatures.add(ParsedTimeSignatureEvent(currentTick, num, denom))
+                            timeSignatures.add(ParsedTimeSignatureEvent(tick = currentTick, startMs = 0L, numerator = num, denominator = denom))
                         }
                     }
                     0x2F -> { // End of Track

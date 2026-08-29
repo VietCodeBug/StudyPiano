@@ -1,6 +1,6 @@
 package com.ian.pianotrainer.data.repository
 
-import com.ian.pianotrainer.data.local.database.SampleDataSeeder
+import com.ian.pianotrainer.data.local.database.DatabaseMaintenance
 import com.ian.pianotrainer.data.local.preferences.PreferencesManager
 import com.ian.pianotrainer.domain.model.DisplayMode
 import com.ian.pianotrainer.domain.model.HandMode
@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 
 class SettingsRepositoryImpl(
     private val preferencesManager: PreferencesManager,
-    private val sampleDataSeeder: SampleDataSeeder
+    private val databaseMaintenance: DatabaseMaintenance
 ) : SettingsRepository {
 
     override val userSettings: Flow<UserSettings> = preferencesManager.userSettingsFlow
@@ -46,6 +46,6 @@ class SettingsRepositoryImpl(
 
     override suspend fun resetDemoData() {
         preferencesManager.resetAllSettings()
-        sampleDataSeeder.clearAllData()
+        databaseMaintenance.clearAllData()
     }
 }

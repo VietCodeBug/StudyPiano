@@ -103,7 +103,7 @@ fun PracticeResultScreen(
                     accuracy >= 90f -> "Xuất sắc! Bạn đã thực hiện bài tập với độ chính xác rất cao!"
                     accuracy >= 75f -> "Rất tốt! Cảm giác phím và nhịp điệu của bạn đang tiến bộ rõ rệt."
                     accuracy >= 50f -> "Khá tốt! Hãy tập chậm lại theo máy đập nhịp để tăng độ chính xác nhé."
-                    else -> "Đừng nản lòng! Hãy kiên trì luyện tập từng nốt một cùng đàn Victor VT02."
+                    else -> "Đừng nản lòng! Hãy kiên trì luyện tập từng nốt một cùng cây đàn piano của bạn."
                 }
 
                 val slowBpm = (session.bpm * 0.75f).toInt().coerceAtLeast(30)
@@ -248,7 +248,7 @@ fun PracticeResultScreen(
                                     accuracy < 70f -> "Bạn nên luyện tập chậm lại ở tốc độ $slowBpm BPM (75%) với chế độ Chờ nốt đúng (Wait Mode) để ngón tay ghi nhớ vị trí phím chính xác hơn."
                                     session.wrongNotes > 3 -> "Hãy thử tập riêng từng tay (Tay Phải / Tay Trái) trước khi ghép cả 2 tay lại với nhau."
                                     accuracy >= 90f -> "Bạn đã chơi rất xuất sắc! Hãy thử thách bản thân bằng cách tăng tốc độ lên ${session.bpm + 10} BPM hoặc chuyển sang chế độ Chạy theo nhịp (In Tempo)."
-                                    else -> "Duy trì nhịp điệu đều đặn và chú ý lắng nghe âm thanh từ loa đàn Victor VT02 để khớp nhịp tốt hơn."
+                                    else -> "Duy trì nhịp điệu đều đặn và chú ý lắng nghe âm thanh từ đàn piano để khớp nhịp tốt hơn."
                                 }
 
                                 Text(

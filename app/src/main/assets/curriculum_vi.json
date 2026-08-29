@@ -27,7 +27,7 @@
           "id": "lesson_1_2_black_keys",
           "title": "Nhóm phím đen (2 phím & 3 phím)",
           "objective": "Nhận biết các cụm 2 phím đen và 3 phím đen trên toàn bộ 88 phím.",
-          "description": "Nốt Đô (C) luôn nằm ngay bên trái của cụm 2 phím đen. Hãy tìm cụm 2 phím đen ở giữa đàn Victor VT02 để thấy Đô trung (C4).",
+          "description": "Nốt Đô (C) luôn nằm ngay bên trái của cụm 2 phím đen. Hãy tìm cụm 2 phím đen ở giữa bàn phím để thấy Đô trung (C4).",
           "estimatedDurationMinutes": 8,
           "handMode": "RIGHT",
           "targetMidiNotes": [60, 62, 64],

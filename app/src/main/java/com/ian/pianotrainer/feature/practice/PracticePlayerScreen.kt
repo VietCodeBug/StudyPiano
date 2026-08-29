@@ -242,6 +242,8 @@ fun PracticePlayerScreen(
                     lastResult = uiState.engineState.lastEvaluatedResult,
                     lastPlayedMidi = uiState.engineState.lastPlayedNote,
                     expectedNotes = uiState.engineState.currentExpectedNotes,
+                    tempos = uiState.songPlaybackData?.tempos ?: emptyList(),
+                    timeSignatures = uiState.songPlaybackData?.timeSignatures ?: emptyList(),
                     modifier = Modifier.fillMaxSize()
                 )
 

@@ -367,7 +367,7 @@ fun HomeScreen(
                                     color = PianoTextPrimary
                                 )
                                 Text(
-                                    text = "Victor VT02 (88 phím)",
+                                    text = uiState.connectedDevice?.name ?: "Chưa kết nối đàn MIDI (USB / Bluetooth)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = PianoTextSecondary
                                 )

@@ -70,7 +70,7 @@ fun NoteBadge(
                 Box(
                     modifier = Modifier
                         .size(20.dp)
-                        .background(if (handMode == HandMode.LEFT) Color(0xFF8E44AD) else PianoPrimary, shape = CircleShape),
+                        .background(if (handMode == HandMode.LEFT) Color(0xFFF97316) else PianoPrimary, shape = CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

@@ -10,7 +10,7 @@ import com.ian.pianotrainer.domain.model.KeyboardRangeMode
 import com.ian.pianotrainer.domain.model.NoteDisplaySize
 import com.ian.pianotrainer.domain.model.PracticeConfiguration
 import com.ian.pianotrainer.domain.model.PracticeMode
-import com.ian.pianotrainer.domain.model.PracticeSession
+import com.ian.pianotrainer.domain.model.SongPlaybackData
 import com.ian.pianotrainer.domain.model.UserSettings
 import com.ian.pianotrainer.domain.model.VisualLookAhead
 import com.ian.pianotrainer.domain.repository.CurriculumRepository
@@ -27,11 +27,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 
 data class PracticePlayerUiState(
@@ -60,7 +60,8 @@ data class PracticePlayerUiState(
     val loopPointA: Long? = null,
     val loopPointB: Long? = null,
     val targetDurationSeconds: Int = 0,
-    val isLoadingNotes: Boolean = true
+    val isLoadingNotes: Boolean = true,
+    val songPlaybackData: SongPlaybackData? = null
 )
 
 class PracticePlayerViewModel(
@@ -98,8 +99,10 @@ class PracticePlayerViewModel(
     private val _targetDurationSeconds = MutableStateFlow(0)
     private val _isMetronomeSoundEnabled = MutableStateFlow(true)
     private val _isLoading = MutableStateFlow(true)
+    private val _songPlaybackData = MutableStateFlow<SongPlaybackData?>(null)
 
     private var tickJob: Job? = null
+    private var lastActiveMetronomeBpm: Int = -1
 
     private val _navigateToResult = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToResult: SharedFlow<String> = _navigateToResult.asSharedFlow()
@@ -133,23 +136,24 @@ class PracticePlayerViewModel(
         metronomeController.isRunning,
         _isMetronomeSoundEnabled,
         settingsRepository.userSettings,
-        _isLoading
+        combine(_isLoading, _songPlaybackData) { loading, playback -> Pair(loading, playback) }
     ) { args ->
         val engineState = args[0] as PracticeEngineState
         val activeNotes = args[1] as Set<Int>
         val notes = args[2] as List<ExerciseNote>
-        @Suppress("UNCHECKED_CAST")
-        val loopState = args[4] as List<Any?>
-        val isLoop = loopState[0] as Boolean
-        val ptA = loopState[1] as Long?
-        val ptB = loopState[2] as Long?
-        val targetSec = loopState[3] as Int
-
+        val loopList = args[4] as List<*>
+        val isLoop = loopList[0] as Boolean
+        val ptA = loopList[1] as Long?
+        val ptB = loopList[2] as Long?
+        val targetSec = loopList[3] as Int
         val currentBeat = args[5] as Int
         val isMetro = args[6] as Boolean
         val isSound = args[7] as Boolean
         val settings = args[8] as UserSettings
-        val loading = args[9] as Boolean
+        @Suppress("UNCHECKED_CAST")
+        val pair = args[9] as Pair<Boolean, SongPlaybackData?>
+        val loading = pair.first
+        val playbackData = pair.second
 
         val hand = _currentHandMode.value
         val display = _currentDisplayMode.value
@@ -188,7 +192,8 @@ class PracticePlayerViewModel(
             loopPointA = ptA,
             loopPointB = ptB,
             targetDurationSeconds = targetSec,
-            isLoadingNotes = loading
+            isLoadingNotes = loading,
+            songPlaybackData = playbackData
         )
     }.stateIn(
         scope = viewModelScope,
@@ -212,8 +217,21 @@ class PracticePlayerViewModel(
         tickJob = viewModelScope.launch {
             while (true) {
                 delay(25) // High-precision 40Hz tick for smooth monotonic playhead updates
-                if (!practiceEngine.state.value.isPaused && !practiceEngine.state.value.isFinished) {
+                val engState = practiceEngine.state.value
+                if (!engState.isPaused && !engState.isFinished) {
                     practiceEngine.tickTimer()
+
+                    // Dynamic metronome follow
+                    if (_isMetronomeSoundEnabled.value) {
+                        val currentPos = engState.currentPositionMs
+                        val tempos = _songPlaybackData.value?.tempos
+                        val segBpm = tempos?.lastOrNull { it.startMs <= currentPos }?.bpm ?: _currentBpm.value
+                        val effectiveBpm = (segBpm * _speedMultiplier.value).toInt().coerceIn(30, 300)
+                        if (effectiveBpm != lastActiveMetronomeBpm) {
+                            lastActiveMetronomeBpm = effectiveBpm
+                            metronomeController.start(effectiveBpm)
+                        }
+                    }
                 }
             }
         }
@@ -222,7 +240,14 @@ class PracticePlayerViewModel(
     private fun loadNotesAndStart() {
         viewModelScope.launch {
             _isLoading.value = true
-            val loadedNotes = fetchNotesForSource(sourceType, sourceId, _currentHandMode.value)
+
+            var playbackData: SongPlaybackData? = null
+            if (sourceType == "SONG" || sourceId.startsWith("song_")) {
+                playbackData = songRepository.getSongPlaybackData(sourceId)
+                _songPlaybackData.value = playbackData
+            }
+
+            val loadedNotes = fetchNotesForSource(sourceType, sourceId, _currentHandMode.value, playbackData)
             _exerciseNotes.value = loadedNotes
             _isLoading.value = false
 
@@ -236,6 +261,12 @@ class PracticePlayerViewModel(
                     _startOctave.value = 2
                 }
 
+                val songDefaultBpm = playbackData?.song?.defaultBpm?.coerceIn(30, 240) ?: _currentBpm.value
+                if (sourceType == "SONG" && _speedMultiplier.value == 1.0f && initialBpm != songDefaultBpm) {
+                    val computedSpeed = (initialBpm.toFloat() / songDefaultBpm.toFloat()).coerceIn(0.25f, 1.5f)
+                    _speedMultiplier.value = computedSpeed
+                }
+
                 val config = PracticeConfiguration(
                     title = title,
                     sourceId = sourceId,
@@ -243,7 +274,7 @@ class PracticePlayerViewModel(
                     practiceMode = _currentPracticeMode.value,
                     handMode = _currentHandMode.value,
                     displayMode = _currentDisplayMode.value,
-                    bpm = _currentBpm.value,
+                    bpm = songDefaultBpm,
                     notes = loadedNotes
                 )
                 practiceEngine.setPlaybackSpeed(_speedMultiplier.value)
@@ -252,8 +283,10 @@ class PracticePlayerViewModel(
                     isLoopingEnabled = _isLooping.value,
                     targetDurationSeconds = _targetDurationSeconds.value
                 )
+
                 if (_isMetronomeSoundEnabled.value && !practiceEngine.state.value.isPaused) {
-                    val effectiveBpm = (_currentBpm.value * _speedMultiplier.value).toInt()
+                    val effectiveBpm = (songDefaultBpm * _speedMultiplier.value).toInt().coerceIn(30, 300)
+                    lastActiveMetronomeBpm = effectiveBpm
                     metronomeController.start(effectiveBpm)
                 }
             }
@@ -263,9 +296,11 @@ class PracticePlayerViewModel(
     private suspend fun fetchNotesForSource(
         sourceType: String,
         sourceId: String,
-        filteredHand: HandMode
+        filteredHand: HandMode,
+        playbackData: SongPlaybackData?
     ): List<ExerciseNote> {
         val loadedNotes: List<ExerciseNote> = when {
+            playbackData != null -> playbackData.notes
             sourceType == "LESSON" || sourceId.startsWith("lesson_") -> {
                 val lesson = curriculumRepository.getLessonById(sourceId)
                 lesson?.exercise?.notes ?: emptyList()
@@ -357,11 +392,12 @@ class PracticePlayerViewModel(
     }
 
     fun setPlaybackSpeed(multiplier: Float) {
-        val clamped = multiplier.coerceIn(0.25f, 2.0f)
+        val clamped = multiplier.coerceIn(0.25f, 1.5f)
         _speedMultiplier.value = clamped
         practiceEngine.setPlaybackSpeed(clamped)
         if (_isMetronomeSoundEnabled.value && !practiceEngine.state.value.isPaused) {
-            val effectiveBpm = (_currentBpm.value * clamped).toInt()
+            val effectiveBpm = (_currentBpm.value * clamped).toInt().coerceIn(30, 300)
+            lastActiveMetronomeBpm = effectiveBpm
             metronomeController.start(effectiveBpm)
         }
     }
@@ -401,7 +437,8 @@ class PracticePlayerViewModel(
         val clamped = newBpm.coerceIn(30, 240)
         _currentBpm.value = clamped
         if (_isMetronomeSoundEnabled.value && !practiceEngine.state.value.isPaused) {
-            val effectiveBpm = (clamped * _speedMultiplier.value).toInt()
+            val effectiveBpm = (clamped * _speedMultiplier.value).toInt().coerceIn(30, 300)
+            lastActiveMetronomeBpm = effectiveBpm
             metronomeController.start(effectiveBpm)
         }
     }
@@ -411,9 +448,11 @@ class PracticePlayerViewModel(
         val next = !current
         _isMetronomeSoundEnabled.value = next
         if (next && !practiceEngine.state.value.isPaused) {
-            val effectiveBpm = (_currentBpm.value * _speedMultiplier.value).toInt()
+            val effectiveBpm = (_currentBpm.value * _speedMultiplier.value).toInt().coerceIn(30, 300)
+            lastActiveMetronomeBpm = effectiveBpm
             metronomeController.start(effectiveBpm)
         } else {
+            lastActiveMetronomeBpm = -1
             metronomeController.stop()
         }
     }
@@ -429,11 +468,13 @@ class PracticePlayerViewModel(
         if (currentEngine.isPaused) {
             practiceEngine.resume()
             if (_isMetronomeSoundEnabled.value) {
-                val effectiveBpm = (_currentBpm.value * _speedMultiplier.value).toInt()
+                val effectiveBpm = (_currentBpm.value * _speedMultiplier.value).toInt().coerceIn(30, 300)
+                lastActiveMetronomeBpm = effectiveBpm
                 metronomeController.start(effectiveBpm)
             }
         } else {
             practiceEngine.pause()
+            lastActiveMetronomeBpm = -1
             metronomeController.stop()
         }
     }
@@ -445,6 +486,7 @@ class PracticePlayerViewModel(
     fun onBackgroundPause() {
         if (!practiceEngine.state.value.isPaused) {
             practiceEngine.pause()
+            lastActiveMetronomeBpm = -1
             metronomeController.stop()
         }
     }
@@ -452,6 +494,7 @@ class PracticePlayerViewModel(
     fun finishAndSaveSession() {
         viewModelScope.launch {
             metronomeController.stop()
+            lastActiveMetronomeBpm = -1
             tickJob?.cancel()
             val result = practiceEngine.stop()
             val session = result.session
@@ -470,6 +513,7 @@ class PracticePlayerViewModel(
     override fun onCleared() {
         super.onCleared()
         metronomeController.stop()
+        lastActiveMetronomeBpm = -1
         tickJob?.cancel()
     }
 

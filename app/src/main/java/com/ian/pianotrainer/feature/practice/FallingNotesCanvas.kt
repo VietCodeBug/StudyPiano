@@ -20,6 +20,7 @@ import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoError
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoSuccess
+import com.ian.pianotrainer.core.music.BeatGridCalculator
 import com.ian.pianotrainer.core.music.NoteHelper
 import com.ian.pianotrainer.core.music.PianoGeometryCalculator
 import com.ian.pianotrainer.domain.model.ExerciseNote
@@ -28,6 +29,8 @@ import com.ian.pianotrainer.domain.model.KeyboardRangeMode
 import com.ian.pianotrainer.domain.model.NoteDisplaySize
 import com.ian.pianotrainer.domain.model.NoteNamingMode
 import com.ian.pianotrainer.domain.model.NoteResultType
+import com.ian.pianotrainer.domain.model.SongTempoInfo
+import com.ian.pianotrainer.domain.model.SongTimeSignature
 import com.ian.pianotrainer.domain.model.VisualLookAhead
 
 @Composable
@@ -43,11 +46,15 @@ fun FallingNotesCanvas(
     lastResult: NoteResultType? = null,
     lastPlayedMidi: Int? = null,
     expectedNotes: List<ExerciseNote> = emptyList(),
+    tempos: List<SongTempoInfo> = emptyList(),
+    timeSignatures: List<SongTimeSignature> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val sortedNotes = remember(notes) {
         notes.sortedWith(compareBy({ it.startMs }, { it.midiNote }))
     }
+
+    val gridCalculator = remember { BeatGridCalculator() }
 
     Box(
         modifier = modifier
@@ -79,23 +86,27 @@ fun FallingNotesCanvas(
             val keyGeometries = rangeResult.geometries
             val isDenseMode = (rangeMode == KeyboardRangeMode.SIX_OCTAVES || rangeMode == KeyboardRangeMode.FULL_88_KEYS)
 
-            // 1. Draw Subtle Beat / Timing Guide Lines (Horizontal DAW-like grid)
-            val beatIntervalMs = 500L // ~120 BPM beat interval guide
-            val firstBeatMs = (currentPositionMs / beatIntervalMs) * beatIntervalMs
-            var beatMs = firstBeatMs
-            while (beatMs <= lookAheadEndMs + 500L) {
-                val timeDiff = beatMs - currentPositionMs
+            // 1. Draw Beat / Measure Timing Guide Lines based on BeatGridCalculator
+            val gridLines = gridCalculator.calculate(
+                windowStartMs = currentPositionMs,
+                windowEndMs = lookAheadEndMs,
+                ppq = 480,
+                tempos = tempos,
+                timeSignatures = timeSignatures
+            )
+
+            for (gridLine in gridLines) {
+                val timeDiff = gridLine.timeMs - currentPositionMs
                 val lineY = hitLineY - (timeDiff * pixelsPerMs)
                 if (lineY in 0f..canvasHeight) {
-                    val isMeasure = (beatMs % (beatIntervalMs * 4) == 0L)
+                    val isMeasure = gridLine.isMeasureStart
                     drawLine(
-                        color = if (isMeasure) Color(0x2238BDF8) else Color(0x0F38BDF8),
+                        color = if (isMeasure) Color(0x3338BDF8) else Color(0x1038BDF8),
                         start = Offset(0f, lineY),
                         end = Offset(canvasWidth, lineY),
                         strokeWidth = if (isMeasure) 1.5.dp.toPx() else 1f
                     )
                 }
-                beatMs += beatIntervalMs
             }
 
             // 2. Draw Background Lanes
@@ -138,13 +149,13 @@ fun FallingNotesCanvas(
                 brush = Brush.verticalGradient(
                     listOf(
                         Color.Transparent,
-                        PianoAccent.copy(alpha = 0.14f)
+                        PianoPrimary.copy(alpha = 0.12f)
                     ),
-                    startY = hitLineY - 28.dp.toPx(),
+                    startY = hitLineY - 35.dp.toPx(),
                     endY = hitLineY
                 ),
-                topLeft = Offset(0f, hitLineY - 28.dp.toPx()),
-                size = Size(canvasWidth, 28.dp.toPx())
+                topLeft = Offset(0f, hitLineY - 35.dp.toPx()),
+                size = Size(canvasWidth, 35.dp.toPx())
             )
 
             // 4. Filter notes in visible time window using binary search
@@ -192,8 +203,8 @@ fun FallingNotesCanvas(
                 val baseColor = when {
                     isRecentlyPlayed && lastResult == NoteResultType.CORRECT -> PianoSuccess
                     isRecentlyPlayed && lastResult == NoteResultType.WRONG -> PianoError
-                    note.hand == HandMode.LEFT -> Color(0xFFF97316) // Vibrant Warm Orange
-                    else -> Color(0xFF00E5FF) // Electric Cyan
+                    note.hand == HandMode.LEFT -> Color(0xFFF97316) // Vibrant Warm Orange (Left Hand)
+                    else -> Color(0xFF00E5FF) // Electric Cyan/Blue (Right Hand)
                 }
 
                 val laneMargin = (geom.width * marginRatio).coerceIn(1f, 3.dp.toPx())

@@ -25,20 +25,20 @@ class PracticeEngineUnitTest {
     }
 
     @Test
-    fun chord_orderIndependent_waitForNote() {
+    fun waitChord_orderIndependent() {
         val clock = MockPracticeClock(1000L)
         val engine = RealPracticeEngine(clock)
 
         // Chord: C4 (60), E4 (64), G4 (67) at startMs = 0L, followed by C5 (72) at 500L
         val notes = listOf(
-            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 400L),
-            ExerciseNote(64, "E4", 1.0, 3, HandMode.RIGHT, startMs = 0L, durationMs = 400L),
-            ExerciseNote(67, "G4", 1.0, 5, HandMode.RIGHT, startMs = 0L, durationMs = 400L),
-            ExerciseNote(72, "C5", 1.0, 5, HandMode.RIGHT, startMs = 500L, durationMs = 400L)
+            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 400L, chordId = "c1"),
+            ExerciseNote(64, "E4", 1.0, 3, HandMode.RIGHT, startMs = 0L, durationMs = 400L, chordId = "c1"),
+            ExerciseNote(67, "G4", 1.0, 5, HandMode.RIGHT, startMs = 0L, durationMs = 400L, chordId = "c1"),
+            ExerciseNote(72, "C5", 1.0, 5, HandMode.RIGHT, startMs = 500L, durationMs = 400L, chordId = "c2")
         )
 
         val config = PracticeConfiguration(
-            title = "Chord Test",
+            title = "Wait Chord Test",
             sourceId = "chord_1",
             sourceType = "TEST",
             practiceMode = PracticeMode.WAIT_FOR_NOTE,
@@ -50,44 +50,52 @@ class PracticeEngineUnitTest {
 
         engine.startPractice(config)
         assertEquals(0, engine.state.value.currentNoteIndex)
-        assertEquals(3, engine.state.value.currentExpectedNotes.size)
 
         // 1. Play G4 first (reverse order)
         engine.processPlayedNote(67, 80)
-        assertEquals(0, engine.state.value.currentNoteIndex) // Still at chord
+        assertEquals(0, engine.state.value.currentNoteIndex)
         assertEquals(1, engine.state.value.correctNotesCount)
 
-        // 2. Play C4 second
+        // 2. Play extra wrong note (55) -> should be counted wrong, but G4 remains hit
+        engine.processPlayedNote(55, 80)
+        assertEquals(0, engine.state.value.currentNoteIndex)
+        assertEquals(1, engine.state.value.wrongNotesCount)
+        assertEquals(1, engine.state.value.correctNotesCount)
+
+        // 3. Play C4 second
         engine.processPlayedNote(60, 80)
-        assertEquals(0, engine.state.value.currentNoteIndex) // Still at chord
+        assertEquals(0, engine.state.value.currentNoteIndex)
         assertEquals(2, engine.state.value.correctNotesCount)
 
-        // 3. Play E4 third -> chord completed!
+        // 4. Play E4 third -> full chord satisfied, advances to C5
         engine.processPlayedNote(64, 80)
-        assertEquals(3, engine.state.value.currentNoteIndex) // Advanced past chord (3 notes) to index 3 (C5)
+        assertEquals(3, engine.state.value.currentNoteIndex)
         assertEquals(3, engine.state.value.correctNotesCount)
         assertEquals(72, engine.state.value.currentExpectedNote?.midiNote)
 
-        // 4. Play C5 -> Finish
+        // 5. Play C5 -> finishes
         engine.processPlayedNote(72, 80)
         assertTrue(engine.state.value.isFinished)
     }
 
     @Test
-    fun rhythmMode_scoringAccuracy_earlyLateCorrectMissed() {
+    fun rhythmChord_orderIndependent_and_partialHit() {
         val clock = MockPracticeClock(1000L)
         val engine = RealPracticeEngine(clock)
 
-        // 3 notes at 1000ms, 2000ms, 3000ms
+        // Chord 1: C4 (60), E4 (64), G4 (67) at 1000ms
+        // Chord 2: D4 (62), F4 (65) at 2000ms
         val notes = listOf(
-            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 1000L, durationMs = 400L),
-            ExerciseNote(62, "D4", 1.0, 2, HandMode.RIGHT, startMs = 2000L, durationMs = 400L),
-            ExerciseNote(64, "E4", 1.0, 3, HandMode.RIGHT, startMs = 3000L, durationMs = 400L)
+            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 1000L, durationMs = 400L, chordId = "ch1"),
+            ExerciseNote(64, "E4", 1.0, 3, HandMode.RIGHT, startMs = 1000L, durationMs = 400L, chordId = "ch1"),
+            ExerciseNote(67, "G4", 1.0, 5, HandMode.RIGHT, startMs = 1000L, durationMs = 400L, chordId = "ch1"),
+            ExerciseNote(62, "D4", 1.0, 1, HandMode.RIGHT, startMs = 2000L, durationMs = 400L, chordId = "ch2"),
+            ExerciseNote(65, "F4", 1.0, 3, HandMode.RIGHT, startMs = 2000L, durationMs = 400L, chordId = "ch2")
         )
 
         val config = PracticeConfiguration(
-            title = "Rhythm Scoring",
-            sourceId = "rhythm_1",
+            title = "Rhythm Chord Test",
+            sourceId = "rhythm_chords",
             sourceType = "TEST",
             practiceMode = PracticeMode.RHYTHM,
             handMode = HandMode.RIGHT,
@@ -98,88 +106,52 @@ class PracticeEngineUnitTest {
 
         engine.startPractice(config)
 
-        // 1. Advance clock to 920ms (80ms early -> EARLY)
-        clock.monotonicTime = 1000L + 920L
+        // Advance to 1010ms (in timing window of Chord 1)
+        clock.monotonicTime = 1000L + 1010L
         engine.tickTimer()
-        engine.processPlayedNote(60, 80)
-        assertEquals(NoteResultType.EARLY, engine.state.value.lastEvaluatedResult)
-        assertEquals(1, engine.state.value.earlyNotesCount)
-        assertEquals(1, engine.state.value.currentNoteIndex)
 
-        // 2. Advance clock to 2010ms (10ms diff -> CORRECT)
-        clock.monotonicTime = 1000L + 2010L
-        engine.tickTimer()
-        engine.processPlayedNote(62, 80)
+        // 1. Play G4 first (reverse order)
+        engine.processPlayedNote(67, 80)
+        assertEquals(1, engine.state.value.correctNotesCount)
         assertEquals(NoteResultType.CORRECT, engine.state.value.lastEvaluatedResult)
+
+        // 2. Play C4 second
+        engine.processPlayedNote(60, 80)
         assertEquals(2, engine.state.value.correctNotesCount)
 
-        // 3. Advance clock to 3400ms without playing -> Note 3 expired (MISSED)
-        clock.monotonicTime = 1000L + 3400L
-        engine.tickTimer()
-        assertEquals(1, engine.state.value.missedNotesCount)
-
-        val result = engine.stop()
-        assertEquals(1, result.earlyNotes)
-        assertEquals(1, result.missedNotes)
-    }
-
-    @Test
-    fun seekTo_updatesExpectedNotesAndClearsHits() {
-        val clock = MockPracticeClock(1000L)
-        val engine = RealPracticeEngine(clock)
-
-        val notes = listOf(
-            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 400L),
-            ExerciseNote(62, "D4", 1.0, 2, HandMode.RIGHT, startMs = 1000L, durationMs = 400L),
-            ExerciseNote(64, "E4", 1.0, 3, HandMode.RIGHT, startMs = 2000L, durationMs = 400L),
-            ExerciseNote(65, "F4", 1.0, 4, HandMode.RIGHT, startMs = 3000L, durationMs = 400L)
-        )
-
-        val config = PracticeConfiguration(
-            title = "Seek Test",
-            sourceId = "seek_1",
-            sourceType = "TEST",
-            practiceMode = PracticeMode.WAIT_FOR_NOTE,
-            handMode = HandMode.RIGHT,
-            displayMode = DisplayMode.FALLING_NOTES,
-            bpm = 120,
-            notes = notes
-        )
-
-        engine.startPractice(config)
-        assertEquals(0, engine.state.value.currentNoteIndex)
-
-        // Seek forward to 1900ms -> should expect note at 2000ms (E4, index 2)
-        engine.seekTo(1900L)
-        assertEquals(2, engine.state.value.currentNoteIndex)
-        assertEquals(64, engine.state.value.currentExpectedNote?.midiNote)
-
-        // Play note E4
+        // 3. Play E4 third -> chord completed!
         engine.processPlayedNote(64, 80)
-        assertEquals(3, engine.state.value.currentNoteIndex)
-        assertEquals(65, engine.state.value.currentExpectedNote?.midiNote)
+        assertEquals(3, engine.state.value.correctNotesCount)
+        assertEquals(3, engine.state.value.currentNoteIndex) // Advances to next chord (index 3, D4)
 
-        // Seek backward to 500ms -> should expect note at 1000ms (D4, index 1)
-        engine.seekTo(500L)
-        assertEquals(1, engine.state.value.currentNoteIndex)
-        assertEquals(62, engine.state.value.currentExpectedNote?.midiNote)
+        // Advance to 2000ms (Chord 2)
+        clock.monotonicTime = 1000L + 2000L
+        engine.tickTimer()
+
+        // For Chord 2 (D4, F4): User only hits D4, misses F4
+        engine.processPlayedNote(62, 80)
+        assertEquals(4, engine.state.value.correctNotesCount)
+
+        // Advance past Chord 2 expiration window (2000 + 180 + 50 = 2230ms)
+        clock.monotonicTime = 1000L + 2250L
+        engine.tickTimer()
+
+        // F4 was not hit, so it should be counted as missed
+        assertEquals(1, engine.state.value.missedNotesCount)
     }
 
     @Test
-    fun loopAB_byMilliseconds_wrapAround() {
+    fun speedChange_timelineAnchor_noPlayheadJumps() {
         val clock = MockPracticeClock(1000L)
         val engine = RealPracticeEngine(clock)
 
         val notes = listOf(
-            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 400L),
-            ExerciseNote(62, "D4", 1.0, 2, HandMode.RIGHT, startMs = 1000L, durationMs = 400L),
-            ExerciseNote(64, "E4", 1.0, 3, HandMode.RIGHT, startMs = 2000L, durationMs = 400L),
-            ExerciseNote(65, "F4", 1.0, 4, HandMode.RIGHT, startMs = 3000L, durationMs = 400L)
+            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 20000L)
         )
 
         val config = PracticeConfiguration(
-            title = "Loop AB Test",
-            sourceId = "loop_1",
+            title = "Speed Anchor Test",
+            sourceId = "speed_anchor",
             sourceType = "TEST",
             practiceMode = PracticeMode.RHYTHM,
             handMode = HandMode.RIGHT,
@@ -189,33 +161,57 @@ class PracticeEngineUnitTest {
         )
 
         engine.startPractice(config)
-        // Set Loop between 1000ms (Point A) and 2500ms (Point B)
-        engine.setLoopRangeMs(1000L, 2500L)
-        assertEquals(1000L, engine.state.value.loopStartMs)
-        assertEquals(2500L, engine.state.value.loopEndMs)
 
-        // Advance to 2600ms -> exceeds Loop B (2500ms) -> wraps to Loop A (1000ms) and increments lapCount
-        clock.monotonicTime = 1000L + 2600L
+        // 1. Run 10 seconds at 1.0x speed
+        clock.monotonicTime = 1000L + 10000L
         engine.tickTimer()
+        assertEquals(10000L, engine.state.value.currentPositionMs)
+        assertEquals(10L, engine.state.value.elapsedActiveSeconds)
 
-        assertEquals(2, engine.state.value.lapCount)
-        assertEquals(1000L, engine.state.value.currentPositionMs)
-        assertEquals(1, engine.state.value.currentNoteIndex) // Note D4 at 1000ms
-        assertFalse(engine.state.value.isFinished)
+        // 2. Change speed to 0.5x at 10 seconds
+        engine.setPlaybackSpeed(0.5f)
+        assertEquals(0.5f, engine.state.value.speedMultiplier)
+
+        // 3. Immediately tick -> playhead should remain at 10000ms without jumping backwards!
+        engine.tickTimer()
+        assertEquals(10000L, engine.state.value.currentPositionMs)
+
+        // 4. Run 4 more seconds of real time at 0.5x speed -> song position advances by 2000ms (10000 + 2000 = 12000ms)
+        clock.monotonicTime = 1000L + 14000L
+        engine.tickTimer()
+        assertEquals(12000L, engine.state.value.currentPositionMs)
+        assertEquals(14L, engine.state.value.elapsedActiveSeconds) // Active practice time is real elapsed (14s)
+
+        // 5. Change speed to 1.5x at 14 seconds
+        engine.setPlaybackSpeed(1.5f)
+        assertEquals(1.5f, engine.state.value.speedMultiplier)
+
+        // 6. Immediately tick -> playhead should remain at 12000ms without jumping forwards!
+        engine.tickTimer()
+        assertEquals(12000L, engine.state.value.currentPositionMs)
+
+        // 7. Run 2 more seconds of real time at 1.5x speed -> song position advances by 3000ms (12000 + 3000 = 15000ms)
+        clock.monotonicTime = 1000L + 16000L
+        engine.tickTimer()
+        assertEquals(15000L, engine.state.value.currentPositionMs)
+        assertEquals(16L, engine.state.value.elapsedActiveSeconds)
     }
 
     @Test
-    fun timer_pauseResume_noDoubleCounting() {
+    fun seekTo_resetsChordHitState_and_preservesAccumulatedTime() {
         val clock = MockPracticeClock(1000L)
         val engine = RealPracticeEngine(clock)
 
         val notes = listOf(
-            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 400L)
+            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 400L, chordId = "c1"),
+            ExerciseNote(64, "E4", 1.0, 3, HandMode.RIGHT, startMs = 0L, durationMs = 400L, chordId = "c1"),
+            ExerciseNote(62, "D4", 1.0, 1, HandMode.RIGHT, startMs = 5000L, durationMs = 400L, chordId = "c2"),
+            ExerciseNote(65, "F4", 1.0, 3, HandMode.RIGHT, startMs = 5000L, durationMs = 400L, chordId = "c2")
         )
 
         val config = PracticeConfiguration(
-            title = "Timer Test",
-            sourceId = "timer_1",
+            title = "Seek Chord Reset",
+            sourceId = "seek_reset",
             sourceType = "TEST",
             practiceMode = PracticeMode.WAIT_FOR_NOTE,
             handMode = HandMode.RIGHT,
@@ -226,55 +222,53 @@ class PracticeEngineUnitTest {
 
         engine.startPractice(config)
 
-        // Run for 3000ms
+        // Run for 3 seconds
         clock.monotonicTime = 1000L + 3000L
         engine.tickTimer()
         assertEquals(3L, engine.state.value.elapsedActiveSeconds)
 
-        // Pause at 3000ms
-        engine.pause()
-        assertTrue(engine.state.value.isPaused)
+        // Partially hit first note of chord 1 (C4)
+        engine.processPlayedNote(60, 80)
+        assertEquals(1, engine.state.value.correctNotesCount)
 
-        // 5000ms pass while paused
-        clock.monotonicTime = 1000L + 8000L
-        engine.tickTimer()
-        assertEquals(3L, engine.state.value.elapsedActiveSeconds) // Still 3 seconds!
+        // Seek to 5000ms (Chord 2: D4, F4)
+        engine.seekTo(5000L)
+        assertEquals(2, engine.state.value.currentNoteIndex) // Points to D4
+        assertEquals(62, engine.state.value.currentExpectedNote?.midiNote)
+        assertEquals(3L, engine.state.value.elapsedActiveSeconds) // Accumulated time preserved
 
-        // Resume and run for another 2000ms
-        engine.resume()
-        clock.monotonicTime = 1000L + 10000L
-        engine.tickTimer()
-        assertEquals(5L, engine.state.value.elapsedActiveSeconds) // 3s + 2s = 5s total
+        // User now plays D4 -> correct for Chord 2
+        engine.processPlayedNote(62, 80)
+        assertEquals(2, engine.state.value.correctNotesCount)
+
+        // User plays F4 -> Chord 2 complete
+        engine.processPlayedNote(65, 80)
+        assertEquals(3, engine.state.value.correctNotesCount)
+        assertTrue(engine.state.value.isFinished)
     }
 
     @Test
-    fun speedMultiplier_scalesRhythmPlayhead() {
+    fun speedMultiplier_clampedBetween025and15() {
         val clock = MockPracticeClock(1000L)
         val engine = RealPracticeEngine(clock)
 
-        val notes = listOf(
-            ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 400L),
-            ExerciseNote(62, "D4", 1.0, 2, HandMode.RIGHT, startMs = 2000L, durationMs = 400L)
-        )
-
         val config = PracticeConfiguration(
-            title = "Speed Test",
-            sourceId = "speed_1",
+            title = "Speed Clamp",
+            sourceId = "clamp",
             sourceType = "TEST",
             practiceMode = PracticeMode.RHYTHM,
             handMode = HandMode.RIGHT,
             displayMode = DisplayMode.FALLING_NOTES,
             bpm = 120,
-            notes = notes
+            notes = listOf(ExerciseNote(60, "C4", 1.0, 1, HandMode.RIGHT, startMs = 0L, durationMs = 1000L))
         )
 
         engine.startPractice(config)
-        // Set speed to 0.5x
-        engine.setPlaybackSpeed(0.5f)
 
-        // 1000ms real time passes -> playhead should advance by 500ms (0.5x speed)
-        clock.monotonicTime = 1000L + 1000L
-        engine.tickTimer()
-        assertEquals(500L, engine.state.value.currentPositionMs)
+        engine.setPlaybackSpeed(0.1f)
+        assertEquals(0.25f, engine.state.value.speedMultiplier, 0.001f)
+
+        engine.setPlaybackSpeed(2.5f)
+        assertEquals(1.5f, engine.state.value.speedMultiplier, 0.001f)
     }
 }

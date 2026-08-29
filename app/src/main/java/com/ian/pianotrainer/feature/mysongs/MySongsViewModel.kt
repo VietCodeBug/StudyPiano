@@ -131,13 +131,14 @@ class MySongsViewModel(
     }
 
     fun renameSong(songId: String, newName: String) {
-        if (newName.isBlank()) return
+        val cleanName = newName.trim().take(100)
+        if (cleanName.isBlank()) return
         viewModelScope.launch {
-            songRepository.renameSong(songId, newName)
+            songRepository.renameSong(songId, cleanName)
             _feedbackMessage.value = "Đã cập nhật tên bài nhạc"
             _prepState.value?.let { current ->
                 if (current.song.id == songId) {
-                    _prepState.value = current.copy(song = current.song.copy(displayName = newName.trim()))
+                    _prepState.value = current.copy(song = current.song.copy(displayName = cleanName))
                 }
             }
         }
@@ -210,11 +211,16 @@ class MySongsViewModel(
         onStart: (title: String, songId: String, handMode: String, practiceMode: PracticeMode, bpm: Int) -> Unit
     ) {
         val current = _prepState.value ?: return
+        val activeTracks = current.tracks.filter { it.isSelectedForPractice }
+        if (activeTracks.isEmpty()) {
+            _errorMessage.value = "Hãy chọn ít nhất một track để luyện tập"
+            return
+        }
+
         viewModelScope.launch {
             songRepository.updateTrackConfigurations(current.song.id, current.tracks)
             _prepState.value = null
             // Determine predominant active hand:
-            val activeTracks = current.tracks.filter { it.isSelectedForPractice }
             val hand = when {
                 activeTracks.all { it.assignedHand == "RIGHT" } -> "RIGHT"
                 activeTracks.all { it.assignedHand == "LEFT" } -> "LEFT"
@@ -270,7 +276,7 @@ class MySongsViewModel(
                 }
 
                 result.onSuccess { song ->
-                    _feedbackMessage.value = "Nhập thành công: ${song.displayName} (${song.notes.size} nốt)"
+                    _feedbackMessage.value = "Nhập thành công: ${song.displayName} (${song.noteCount} nốt)"
                     openSongPreparation(song)
                 }.onFailure { error ->
                     _errorMessage.value = error.localizedMessage ?: "Lỗi khi nhập file MIDI"

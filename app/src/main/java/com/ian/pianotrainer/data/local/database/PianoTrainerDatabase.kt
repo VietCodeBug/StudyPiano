@@ -13,6 +13,7 @@ import com.ian.pianotrainer.data.local.database.dao.PracticeNoteResultDao
 import com.ian.pianotrainer.data.local.database.dao.PracticeSessionDao
 import com.ian.pianotrainer.data.local.database.dao.SongNoteDao
 import com.ian.pianotrainer.data.local.database.dao.SongTempoDao
+import com.ian.pianotrainer.data.local.database.dao.SongTimeSignatureDao
 import com.ian.pianotrainer.data.local.database.dao.SongTrackDao
 import com.ian.pianotrainer.data.local.database.entity.FreePlayRecordedEventEntity
 import com.ian.pianotrainer.data.local.database.entity.FreePlayRecordingEntity
@@ -22,6 +23,7 @@ import com.ian.pianotrainer.data.local.database.entity.PracticeNoteResultEntity
 import com.ian.pianotrainer.data.local.database.entity.PracticeSessionEntity
 import com.ian.pianotrainer.data.local.database.entity.SongNoteEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTempoEntity
+import com.ian.pianotrainer.data.local.database.entity.SongTimeSignatureEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
 
 @Database(
@@ -30,13 +32,14 @@ import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
         SongTrackEntity::class,
         SongNoteEntity::class,
         SongTempoEntity::class,
+        SongTimeSignatureEntity::class,
         LessonProgressEntity::class,
         PracticeSessionEntity::class,
         PracticeNoteResultEntity::class,
         FreePlayRecordingEntity::class,
         FreePlayRecordedEventEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class PianoTrainerDatabase : RoomDatabase() {
@@ -44,6 +47,7 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
     abstract fun songTrackDao(): SongTrackDao
     abstract fun songNoteDao(): SongNoteDao
     abstract fun songTempoDao(): SongTempoDao
+    abstract fun songTimeSignatureDao(): SongTimeSignatureDao
     abstract fun lessonProgressDao(): LessonProgressDao
     abstract fun practiceSessionDao(): PracticeSessionDao
     abstract fun practiceNoteResultDao(): PracticeNoteResultDao
@@ -170,6 +174,27 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE imported_songs ADD COLUMN noteCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE imported_songs SET noteCount = (SELECT COUNT(*) FROM song_notes WHERE song_notes.songId = imported_songs.id)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS song_time_signatures (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        songId TEXT NOT NULL,
+                        startTick INTEGER NOT NULL,
+                        startMs INTEGER NOT NULL,
+                        numerator INTEGER NOT NULL,
+                        denominator INTEGER NOT NULL,
+                        FOREIGN KEY(songId) REFERENCES imported_songs(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_song_time_signatures_songId ON song_time_signatures(songId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: PianoTrainerDatabase? = null
 
@@ -180,7 +205,7 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
                     PianoTrainerDatabase::class.java,
                     DATABASE_NAME
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 INSTANCE = instance
                 instance

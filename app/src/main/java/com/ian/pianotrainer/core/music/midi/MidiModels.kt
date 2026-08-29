@@ -44,6 +44,7 @@ data class ParsedTempoEvent(
 
 data class ParsedTimeSignatureEvent(
     val tick: Long,
+    val startMs: Long = 0L,
     val numerator: Int,
     val denominator: Int
 )

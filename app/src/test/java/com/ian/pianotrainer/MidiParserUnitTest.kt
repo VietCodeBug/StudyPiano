@@ -165,7 +165,7 @@ class MidiParserUnitTest {
         parsed.tracks[0].notes.forEach {
             assertEquals(0L, it.startTick)
             assertEquals(480L, it.endTick)
-            assertEquals("chord_0_0", it.chordId)
+            assertEquals("chord_1", it.chordId)
         }
     }
 

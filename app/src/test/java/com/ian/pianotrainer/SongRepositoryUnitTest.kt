@@ -5,6 +5,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.ian.pianotrainer.data.local.database.PianoTrainerDatabase
 import com.ian.pianotrainer.data.repository.DuplicateMidiException
+import com.ian.pianotrainer.data.repository.InvalidMidiFileException
+import com.ian.pianotrainer.data.repository.MidiFileTooLargeException
 import com.ian.pianotrainer.data.repository.SongRepositoryImpl
 import com.ian.pianotrainer.domain.model.HandMode
 import kotlinx.coroutines.flow.first
@@ -22,6 +24,8 @@ import org.robolectric.RobolectricTestRunner
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.io.File
+import java.io.InputStream
 
 @RunWith(RobolectricTestRunner::class)
 class SongRepositoryUnitTest {
@@ -39,10 +43,12 @@ class SongRepositoryUnitTest {
 
         repository = SongRepositoryImpl(
             context = context,
+            database = db,
             importedSongDao = db.importedSongDao(),
             songTrackDao = db.songTrackDao(),
             songNoteDao = db.songNoteDao(),
-            songTempoDao = db.songTempoDao()
+            songTempoDao = db.songTempoDao(),
+            songTimeSignatureDao = db.songTimeSignatureDao()
         )
     }
 
@@ -65,6 +71,16 @@ class SongRepositoryUnitTest {
         // 2. MTrk Track
         val trackStream = ByteArrayOutputStream()
         val trackDos = DataOutputStream(trackStream)
+
+        // Time Signature: Delta 0, FF 58 04 04 02 18 08 (4/4)
+        trackDos.writeByte(0x00)
+        trackDos.writeByte(0xFF)
+        trackDos.writeByte(0x58)
+        trackDos.writeByte(0x04)
+        trackDos.writeByte(0x04)
+        trackDos.writeByte(0x02) // 2^2 = 4
+        trackDos.writeByte(0x18)
+        trackDos.writeByte(0x08)
 
         // Note On: Delta 0, Note 60, Vel 80
         trackDos.writeByte(0x00)
@@ -108,17 +124,80 @@ class SongRepositoryUnitTest {
         assertNotNull(imported)
         assertEquals("My First Song", imported?.displayName)
         assertEquals(1, imported?.trackCount)
+        assertEquals(1, imported?.noteCount)
 
         // Check getAllSongs
         val allSongs = repository.getAllSongs().first()
         assertEquals(1, allSongs.size)
         assertEquals("My First Song", allSongs[0].displayName)
+        assertEquals(1, allSongs[0].noteCount)
 
         // Check getSongById
         val retrieved = repository.getSongById(imported!!.id)
         assertNotNull(retrieved)
         assertEquals(1, retrieved?.notes?.size)
         assertEquals(60, retrieved?.notes?.get(0)?.midiNote)
+
+        // Check playback data
+        val playbackData = repository.getSongPlaybackData(imported.id)
+        assertNotNull(playbackData)
+        assertEquals(1, playbackData?.timeSignatures?.size)
+        assertEquals(4, playbackData?.timeSignatures?.get(0)?.numerator)
+        assertEquals(4, playbackData?.timeSignatures?.get(0)?.denominator)
+    }
+
+    @Test
+    fun importMidiFile_providerReportsOver20MB_failsImmediately() = runTest {
+        val rawBytes = createSampleMidiBytes(60)
+        val result = repository.importMidiFile(
+            inputStream = ByteArrayInputStream(rawBytes),
+            originalFileName = "large.mid",
+            fileSize = 25L * 1024L * 1024L // 25 MB reported
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is MidiFileTooLargeException)
+    }
+
+    @Test
+    fun importMidiFile_streamExceeds20MB_fails() = runTest {
+        // Create an infinite or 21MB stream
+        val stream = object : InputStream() {
+            var count = 0L
+            override fun read(): Int {
+                if (count > 21L * 1024L * 1024L) return -1
+                count++
+                return 0
+            }
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (count > 21L * 1024L * 1024L) return -1
+                val toRead = minOf(len.toLong(), 21L * 1024L * 1024L - count + 1).toInt()
+                count += toRead
+                return toRead
+            }
+        }
+
+        val result = repository.importMidiFile(
+            inputStream = stream,
+            originalFileName = "too_large_stream.mid",
+            fileSize = 0L // provider reported unknown size
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is MidiFileTooLargeException)
+    }
+
+    @Test
+    fun importMidiFile_invalidHeader_failsWithInvalidMidiFileException() = runTest {
+        val corruptedBytes = "Not a MIDI file content at all".toByteArray()
+        val result = repository.importMidiFile(
+            inputStream = ByteArrayInputStream(corruptedBytes),
+            originalFileName = "corrupted.mid",
+            fileSize = corruptedBytes.size.toLong()
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is InvalidMidiFileException)
     }
 
     @Test
@@ -170,7 +249,7 @@ class SongRepositoryUnitTest {
     }
 
     @Test
-    fun deleteSong_cascadesAndCleansUp() = runTest {
+    fun deleteSong_cascadesAndCleansUpAllChildRowsAndFiles() = runTest {
         val rawBytes = createSampleMidiBytes(64)
         val imported = repository.importMidiFile(
             inputStream = ByteArrayInputStream(rawBytes),
@@ -178,14 +257,26 @@ class SongRepositoryUnitTest {
             fileSize = rawBytes.size.toLong()
         ).getOrThrow()
 
-        assertNotNull(repository.getSongById(imported.id))
+        val songId = imported.id
+        assertNotNull(repository.getSongById(songId))
+        assertEquals(1, db.songTrackDao().getTracksForSong(songId).size)
+        assertEquals(1, db.songNoteDao().getNotesForSong(songId).size)
+        assertEquals(1, db.songTempoDao().getTemposForSong(songId).size)
+        assertEquals(1, db.songTimeSignatureDao().getTimeSignaturesForSong(songId).size)
+
+        val localFile = File(context.filesDir, "songs/$songId/source.mid")
+        assertTrue(localFile.exists())
 
         // Delete
-        repository.deleteSong(imported.id)
+        repository.deleteSong(songId)
 
-        assertNull(repository.getSongById(imported.id))
-        val allSongs = repository.getAllSongs().first()
-        assertTrue(allSongs.isEmpty())
+        // Assert parent and all children cascaded
+        assertNull(repository.getSongById(songId))
+        assertTrue(db.songTrackDao().getTracksForSong(songId).isEmpty())
+        assertTrue(db.songNoteDao().getNotesForSong(songId).isEmpty())
+        assertTrue(db.songTempoDao().getTemposForSong(songId).isEmpty())
+        assertTrue(db.songTimeSignatureDao().getTimeSignaturesForSong(songId).isEmpty())
+        assertFalse(localFile.exists())
     }
 
     @Test

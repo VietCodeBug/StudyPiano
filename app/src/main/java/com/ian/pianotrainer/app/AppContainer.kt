@@ -5,8 +5,8 @@ import com.ian.pianotrainer.core.midi.AndroidMidiDriver
 import com.ian.pianotrainer.core.music.SystemPracticeClock
 import com.ian.pianotrainer.data.assets.AssetCurriculumDataSource
 import com.ian.pianotrainer.data.assets.AssetExerciseDataSource
+import com.ian.pianotrainer.data.local.database.DatabaseMaintenance
 import com.ian.pianotrainer.data.local.database.PianoTrainerDatabase
-import com.ian.pianotrainer.data.local.database.SampleDataSeeder
 import com.ian.pianotrainer.data.local.preferences.PreferencesManager
 import com.ian.pianotrainer.data.practice.RealMetronomeController
 import com.ian.pianotrainer.data.practice.RealPracticeEngine
@@ -30,7 +30,7 @@ import com.ian.pianotrainer.domain.service.PracticeEngine
 interface AppContainer {
     val database: PianoTrainerDatabase
     val preferencesManager: PreferencesManager
-    val sampleDataSeeder: SampleDataSeeder
+    val databaseMaintenance: DatabaseMaintenance
     val midiInput: MidiInput
     val pianoDeviceManager: PianoDeviceManager
     val practiceEngine: PracticeEngine
@@ -53,8 +53,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         PreferencesManager(context)
     }
 
-    override val sampleDataSeeder: SampleDataSeeder by lazy {
-        SampleDataSeeder(database)
+    override val databaseMaintenance: DatabaseMaintenance by lazy {
+        DatabaseMaintenance(database)
     }
 
     private val assetCurriculumDataSource: AssetCurriculumDataSource by lazy {
@@ -100,10 +100,12 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override val songRepository: SongRepository by lazy {
         SongRepositoryImpl(
             context = context,
+            database = database,
             importedSongDao = database.importedSongDao(),
             songTrackDao = database.songTrackDao(),
             songNoteDao = database.songNoteDao(),
-            songTempoDao = database.songTempoDao()
+            songTempoDao = database.songTempoDao(),
+            songTimeSignatureDao = database.songTimeSignatureDao()
         )
     }
 
@@ -118,7 +120,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override val settingsRepository: SettingsRepository by lazy {
         SettingsRepositoryImpl(
             preferencesManager = preferencesManager,
-            sampleDataSeeder = sampleDataSeeder
+            databaseMaintenance = databaseMaintenance
         )
     }
 

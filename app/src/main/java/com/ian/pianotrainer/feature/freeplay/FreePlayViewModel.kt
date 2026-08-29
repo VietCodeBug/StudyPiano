@@ -230,10 +230,10 @@ class FreePlayViewModel(
         val octave = (midiNote / 12) - 1
         return when (octave % 6) {
             0 -> Color(0xFF00E5FF) // Neon Cyan
-            1 -> Color(0xFF3B82F6) // Electric Blue
-            2 -> Color(0xFFA855F7) // Purple
-            3 -> Color(0xFFEC4899) // Hot Pink
-            4 -> Color(0xFFF97316) // Vibrant Orange
+            1 -> Color(0xFF38BDF8) // Sky Blue
+            2 -> Color(0xFF3B82F6) // Electric Blue
+            3 -> Color(0xFF06B6D4) // Radiant Teal
+            4 -> Color(0xFFF97316) // Vibrant Warm Orange
             else -> Color(0xFF10B981) // Emerald Green
         }
     }

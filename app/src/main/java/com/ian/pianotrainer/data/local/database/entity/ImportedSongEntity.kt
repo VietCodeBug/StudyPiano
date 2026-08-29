@@ -15,6 +15,7 @@ data class ImportedSongEntity(
     val midiFormatType: Int = 1,
     val ticksPerQuarterNote: Int = 480,
     val trackCount: Int = 1,
+    val noteCount: Int = 0,
     val durationMs: Long?,
     val defaultBpm: Int,
     val difficulty: String,
@@ -38,6 +39,7 @@ fun ImportedSongEntity.toDomainModel(): ImportedSong {
         lastPracticedAt = lastPracticedAt,
         isFavorite = isFavorite,
         trackCount = trackCount,
+        noteCount = noteCount,
         notes = emptyList()
     )
 }
@@ -53,6 +55,8 @@ fun ImportedSong.toEntity(): ImportedSongEntity {
         difficulty = difficulty,
         importedAt = importedAt,
         lastPracticedAt = lastPracticedAt,
-        isFavorite = isFavorite
+        isFavorite = isFavorite,
+        trackCount = trackCount,
+        noteCount = noteCount
     )
 }

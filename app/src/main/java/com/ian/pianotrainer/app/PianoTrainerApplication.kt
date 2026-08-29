@@ -17,9 +17,9 @@ class PianoTrainerApplication : Application() {
         super.onCreate()
         container = DefaultAppContainer(this)
 
-        // Seed demo data on initial launch if empty
+        // Clean legacy demo artifacts if any
         applicationScope.launch {
-            container.sampleDataSeeder.seedIfNeeded()
+            container.databaseMaintenance.cleanLegacyDemoDataIfNeeded()
         }
     }
 }

@@ -19,6 +19,7 @@ interface SongRepository {
         customTitle: String? = null
     ): Result<ImportedSong>
     suspend fun updateTrackConfigurations(songId: String, tracks: List<SongTrackEntity>)
+    suspend fun renameSong(id: String, newName: String)
     suspend fun toggleFavorite(id: String)
     suspend fun deleteSong(id: String)
     suspend fun updateLastPracticed(id: String)

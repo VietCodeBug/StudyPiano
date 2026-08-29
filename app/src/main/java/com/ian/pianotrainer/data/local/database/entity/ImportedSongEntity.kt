@@ -37,6 +37,7 @@ fun ImportedSongEntity.toDomainModel(): ImportedSong {
         importedAt = importedAt,
         lastPracticedAt = lastPracticedAt,
         isFavorite = isFavorite,
+        trackCount = trackCount,
         notes = emptyList()
     )
 }

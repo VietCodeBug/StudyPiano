@@ -22,6 +22,7 @@ import com.ian.pianotrainer.app.PianoTrainerApplication
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoTrainerTheme
 import com.ian.pianotrainer.domain.model.HandMode
+import com.ian.pianotrainer.domain.model.PracticeMode
 import com.ian.pianotrainer.feature.device.DeviceConnectionScreen
 import com.ian.pianotrainer.feature.device.DeviceViewModel
 import com.ian.pianotrainer.feature.diagnostics.MidiDiagnosticScreen
@@ -182,12 +183,14 @@ class MainActivity : ComponentActivity() {
                             )
                             MySongsScreen(
                                 viewModel = viewModel,
-                                onPracticeSong = { title, songId, bpm ->
+                                onStartPractice = { title, songId, handMode, practiceMode, bpm ->
                                     navController.navigate(
                                         Screen.PracticePlayer.createRoute(
                                             title = title,
                                             sourceType = "SONG",
                                             sourceId = songId,
+                                            handMode = handMode,
+                                            practiceMode = practiceMode.name,
                                             bpm = bpm
                                         )
                                     )
@@ -254,6 +257,7 @@ class MainActivity : ComponentActivity() {
                                             sourceType = "LESSON",
                                             sourceId = sourceId,
                                             handMode = handMode,
+                                            practiceMode = "WAIT_FOR_NOTE",
                                             bpm = bpm
                                         )
                                     )
@@ -281,6 +285,10 @@ class MainActivity : ComponentActivity() {
                                     type = NavType.StringType
                                     defaultValue = "RIGHT"
                                 },
+                                navArgument("practiceMode") {
+                                    type = NavType.StringType
+                                    defaultValue = "WAIT_FOR_NOTE"
+                                },
                                 navArgument("displayMode") {
                                     type = NavType.StringType
                                     defaultValue = "FALLING_NOTES"
@@ -295,7 +303,9 @@ class MainActivity : ComponentActivity() {
                             val sourceType = backStackEntry.arguments?.getString("sourceType") ?: "DRILL"
                             val sourceId = backStackEntry.arguments?.getString("sourceId") ?: ""
                             val handModeStr = backStackEntry.arguments?.getString("handMode") ?: "RIGHT"
+                            val practiceModeStr = backStackEntry.arguments?.getString("practiceMode") ?: "WAIT_FOR_NOTE"
                             val initialHand = runCatching { HandMode.valueOf(handModeStr) }.getOrDefault(HandMode.RIGHT)
+                            val initialPracticeMode = runCatching { PracticeMode.valueOf(practiceModeStr) }.getOrDefault(PracticeMode.WAIT_FOR_NOTE)
                             val initialBpm = backStackEntry.arguments?.getInt("bpm") ?: 60
 
                             val viewModel: PracticePlayerViewModel = viewModel(
@@ -305,6 +315,7 @@ class MainActivity : ComponentActivity() {
                                     sourceId = sourceId,
                                     initialHand = initialHand,
                                     initialBpm = initialBpm,
+                                    initialPracticeMode = initialPracticeMode,
                                     practiceEngine = appContainer.practiceEngine,
                                     midiInput = appContainer.midiInput,
                                     metronomeController = appContainer.metronomeController,

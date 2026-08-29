@@ -217,6 +217,12 @@ class SongRepositoryImpl(
         songNoteDao.insertNotes(updatedNotes)
     }
 
+    override suspend fun renameSong(id: String, newName: String) = withContext(Dispatchers.IO) {
+        val song = importedSongDao.getSongById(id) ?: return@withContext
+        val updated = song.copy(displayName = newName.trim())
+        importedSongDao.updateSong(updated)
+    }
+
     override suspend fun toggleFavorite(id: String) = withContext(Dispatchers.IO) {
         val song = importedSongDao.getSongById(id) ?: return@withContext
         val updated = song.copy(isFavorite = !song.isFavorite)

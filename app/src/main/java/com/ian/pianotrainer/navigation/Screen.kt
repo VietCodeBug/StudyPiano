@@ -26,15 +26,16 @@ sealed class Screen(val route: String) {
         fun createRoute(lessonId: String) = "lesson_detail/$lessonId"
     }
 
-    object PracticePlayer : Screen("practice_player?title={title}&sourceType={sourceType}&sourceId={sourceId}&handMode={handMode}&displayMode={displayMode}&bpm={bpm}") {
+    object PracticePlayer : Screen("practice_player?title={title}&sourceType={sourceType}&sourceId={sourceId}&handMode={handMode}&practiceMode={practiceMode}&displayMode={displayMode}&bpm={bpm}") {
         fun createRoute(
             title: String,
             sourceType: String,
             sourceId: String = "",
             handMode: String = "RIGHT",
+            practiceMode: String = "WAIT_FOR_NOTE",
             displayMode: String = "FALLING_NOTES",
             bpm: Int = 60
-        ) = "practice_player?title=$title&sourceType=$sourceType&sourceId=$sourceId&handMode=$handMode&displayMode=$displayMode&bpm=$bpm"
+        ) = "practice_player?title=$title&sourceType=$sourceType&sourceId=$sourceId&handMode=$handMode&practiceMode=$practiceMode&displayMode=$displayMode&bpm=$bpm"
     }
 
     object FreePlay : Screen("free_play")

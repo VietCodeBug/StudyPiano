@@ -26,6 +26,10 @@ data class PracticeEngineState(
     val elapsedActiveSeconds: Long = 0L,
     val elapsedActiveMs: Long = 0L,
     val currentPositionMs: Long = 0L,
+    val songDurationMs: Long = 0L,
+    val speedMultiplier: Float = 1.0f,
+    val loopStartMs: Long? = null,
+    val loopEndMs: Long? = null,
     val lapCount: Int = 1,
     val isTargetDurationReached: Boolean = false,
     val targetDurationSeconds: Int = 0,
@@ -43,6 +47,10 @@ interface PracticeEngine {
     fun processPlayedNote(midiNote: Int, velocity: Int)
     fun setLooping(enabled: Boolean)
     fun setLoopRange(startIndex: Int, endIndex: Int)
+    fun setLoopRangeMs(startMs: Long, endMs: Long)
+    fun clearLoop()
+    fun seekTo(targetMs: Long)
+    fun setPlaybackSpeed(speed: Float)
     fun tickTimer()
     fun pause()
     fun resume()

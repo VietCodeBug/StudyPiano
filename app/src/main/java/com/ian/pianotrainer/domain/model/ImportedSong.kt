@@ -11,6 +11,7 @@ data class ImportedSong(
     val importedAt: Long = System.currentTimeMillis(),
     val lastPracticedAt: Long? = null,
     val isFavorite: Boolean = false,
+    val trackCount: Int = 1,
     val notes: List<ExerciseNote> = emptyList()
 ) {
     fun formattedDuration(): String {

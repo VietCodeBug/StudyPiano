@@ -74,11 +74,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ian.pianotrainer.core.designsystem.DangerButton
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoError
 import com.ian.pianotrainer.core.designsystem.PianoOutline
-import com.ian.pianotrainer.core.designsystem.PianoOutlinedButton
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryContainer
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryDark
@@ -88,8 +86,10 @@ import com.ian.pianotrainer.core.designsystem.PianoSurface
 import com.ian.pianotrainer.core.designsystem.PianoSurfaceVariant
 import com.ian.pianotrainer.core.designsystem.PianoTextPrimary
 import com.ian.pianotrainer.core.designsystem.PianoTextSecondary
-import com.ian.pianotrainer.core.designsystem.PrimaryButton
-import com.ian.pianotrainer.core.designsystem.SectionHeader
+import com.ian.pianotrainer.core.ui.DangerButton
+import com.ian.pianotrainer.core.ui.PianoOutlinedButton
+import com.ian.pianotrainer.core.ui.PrimaryButton
+import com.ian.pianotrainer.core.ui.SectionHeader
 import com.ian.pianotrainer.core.music.NoteHelper
 import com.ian.pianotrainer.domain.model.DeviceConnectionState
 import com.ian.pianotrainer.domain.model.DeviceType

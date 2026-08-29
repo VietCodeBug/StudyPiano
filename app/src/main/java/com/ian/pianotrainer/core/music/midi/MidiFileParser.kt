@@ -103,15 +103,19 @@ object MidiFileParser {
         val processedTracks = mutableListOf<ParsedMidiTrack>()
 
         for (rawTrack in rawTracks) {
+            val rawSorted = rawTrack.notes.sortedWith(compareBy({ it.startTick }, { it.midiNote }))
             val convertedNotes = mutableListOf<ParsedMidiNote>()
-            for (rn in rawTrack.notes) {
+
+            for (rn in rawSorted) {
                 val startMs = tickToMs(rn.startTick, tempoSegments, ticksPerQuarterNote)
                 val endMs = tickToMs(rn.endTick, tempoSegments, ticksPerQuarterNote)
                 val durationMs = max(50L, endMs - startMs) // minimum 50ms for audibility
 
-                if (endMs > maxEndMs) {
-                    maxEndMs = endMs
+                if (startMs + durationMs > maxEndMs) {
+                    maxEndMs = startMs + durationMs
                 }
+
+                val chordId = "chord_${rn.trackIndex}_${rn.startTick}"
 
                 convertedNotes.add(
                     ParsedMidiNote(
@@ -122,7 +126,9 @@ object MidiFileParser {
                         startTick = rn.startTick,
                         endTick = rn.endTick,
                         startMs = startMs,
-                        durationMs = durationMs
+                        durationMs = durationMs,
+                        assignedHand = "BOTH",
+                        chordId = chordId
                     )
                 )
             }
@@ -130,7 +136,6 @@ object MidiFileParser {
             if (convertedNotes.isNotEmpty()) {
                 val minPitch = convertedNotes.minOf { it.midiNote }
                 val maxPitch = convertedNotes.maxOf { it.midiNote }
-                val avgPitch = convertedNotes.map { it.midiNote }.average()
 
                 processedTracks.add(
                     ParsedMidiTrack(
@@ -141,37 +146,37 @@ object MidiFileParser {
                         noteCount = convertedNotes.size,
                         minMidiNote = minPitch,
                         maxMidiNote = maxPitch,
-                        defaultHand = "BOTH", // will be heuristically assigned below
-                        notes = convertedNotes.sortedBy { it.startMs }
+                        defaultHand = "BOTH",
+                        notes = convertedNotes
                     )
                 )
             }
         }
 
-        // 5. Intelligent Hand Assignment Heuristics
-        if (processedTracks.size == 2) {
-            val t0 = processedTracks[0]
-            val t1 = processedTracks[1]
-            val avg0 = t0.notes.map { it.midiNote }.average()
-            val avg1 = t1.notes.map { it.midiNote }.average()
-
-            if (avg0 > avg1) {
-                assignHand(processedTracks[0], "RIGHT")
-                assignHand(processedTracks[1], "LEFT")
+        // 5. Intelligent Hand Assignment Heuristics (no reflection)
+        val finalTracks = if (processedTracks.size == 2) {
+            val avg0 = processedTracks[0].notes.map { it.midiNote }.average()
+            val avg1 = processedTracks[1].notes.map { it.midiNote }.average()
+            if (avg0 >= avg1) {
+                listOf(
+                    applyHandToTrack(processedTracks[0], "RIGHT"),
+                    applyHandToTrack(processedTracks[1], "LEFT")
+                )
             } else {
-                assignHand(processedTracks[0], "LEFT")
-                assignHand(processedTracks[1], "RIGHT")
+                listOf(
+                    applyHandToTrack(processedTracks[0], "LEFT"),
+                    applyHandToTrack(processedTracks[1], "RIGHT")
+                )
             }
         } else {
-            for (track in processedTracks) {
+            processedTracks.map { track ->
                 val avgPitch = track.notes.map { it.midiNote }.average()
-                if (avgPitch >= 60) {
-                    assignHand(track, "RIGHT")
-                } else if (avgPitch <= 55) {
-                    assignHand(track, "LEFT")
-                } else {
-                    assignHand(track, "BOTH")
+                val hand = when {
+                    avgPitch >= 60 -> "RIGHT"
+                    avgPitch <= 55 -> "LEFT"
+                    else -> "BOTH"
                 }
+                applyHandToTrack(track, hand)
             }
         }
 
@@ -189,19 +194,15 @@ object MidiFileParser {
             ticksPerQuarterNote = ticksPerQuarterNote,
             durationMs = maxEndMs,
             defaultBpm = defaultBpm,
-            tracks = processedTracks,
+            tracks = finalTracks,
             tempos = tempoList,
             timeSignatures = timeSignatureEvents
         )
     }
 
-    private fun assignHand(track: ParsedMidiTrack, hand: String) {
-        val field = track.javaClass.getDeclaredField("defaultHand")
-        field.isAccessible = true
-        // For immutable copy, assign to each note:
-        for (note in track.notes) {
-            note.assignedHand = hand
-        }
+    private fun applyHandToTrack(track: ParsedMidiTrack, hand: String): ParsedMidiTrack {
+        val updatedNotes = track.notes.map { it.copy(assignedHand = hand) }
+        return track.copy(defaultHand = hand, notes = updatedNotes)
     }
 
     private fun parseTrackBytes(trackIndex: Int, bytes: ByteArray): RawTrackData {

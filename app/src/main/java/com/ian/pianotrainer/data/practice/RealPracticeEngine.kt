@@ -31,6 +31,7 @@ class RealPracticeEngine(
     private var currentConfig: PracticeConfiguration? = null
     private var isLooping: Boolean = false
     private var targetDurationSec: Int = 0
+    private var speedMultiplier: Float = 1.0f
 
     private var sessionWallStartTimeMs: Long = 0L
     private var lastResumeMonotonicMs: Long = 0L
@@ -44,6 +45,8 @@ class RealPracticeEngine(
 
     private var loopStartIndex: Int = 0
     private var loopEndIndex: Int = Int.MAX_VALUE
+    private var loopStartMs: Long? = null
+    private var loopEndMs: Long? = null
 
     // Chord tracking: keeps track of MIDI notes in the current expected chord that have been hit
     private val currentChordHitNotes = mutableSetOf<Int>()
@@ -58,6 +61,8 @@ class RealPracticeEngine(
         targetDurationSec = targetDurationSeconds
         loopStartIndex = 0
         loopEndIndex = Int.MAX_VALUE
+        loopStartMs = null
+        loopEndMs = null
         currentChordHitNotes.clear()
 
         sessionWallStartTimeMs = clock.currentTimeMillis()
@@ -111,6 +116,10 @@ class RealPracticeEngine(
             elapsedActiveSeconds = 0L,
             elapsedActiveMs = 0L,
             currentPositionMs = firstNote?.startMs ?: 0L,
+            songDurationMs = songDurationMs,
+            speedMultiplier = speedMultiplier,
+            loopStartMs = null,
+            loopEndMs = null,
             lapCount = 1,
             isTargetDurationReached = false,
             targetDurationSeconds = targetDurationSeconds,
@@ -118,14 +127,81 @@ class RealPracticeEngine(
         )
     }
 
+    override fun setPlaybackSpeed(speed: Float) {
+        speedMultiplier = speed.coerceIn(0.25f, 2.0f)
+        _state.value = _state.value.copy(speedMultiplier = speedMultiplier)
+    }
+
     override fun setLooping(enabled: Boolean) {
         isLooping = enabled
     }
 
     override fun setLoopRange(startIndex: Int, endIndex: Int) {
-        loopStartIndex = startIndex.coerceAtLeast(0)
-        loopEndIndex = endIndex.coerceAtLeast(loopStartIndex)
+        val notes = currentConfig?.notes ?: return
+        loopStartIndex = startIndex.coerceIn(0, notes.lastIndex)
+        loopEndIndex = endIndex.coerceIn(loopStartIndex, notes.lastIndex)
+        loopStartMs = notes.getOrNull(loopStartIndex)?.startMs
+        loopEndMs = notes.getOrNull(loopEndIndex)?.let { it.startMs + it.durationMs }
         isLooping = true
+        _state.value = _state.value.copy(
+            loopStartMs = loopStartMs,
+            loopEndMs = loopEndMs
+        )
+    }
+
+    override fun setLoopRangeMs(startMs: Long, endMs: Long) {
+        if (endMs <= startMs) return
+        loopStartMs = startMs
+        loopEndMs = endMs
+        isLooping = true
+
+        val notes = currentConfig?.notes ?: emptyList()
+        loopStartIndex = notes.indexOfFirst { it.startMs >= startMs }.takeIf { it != -1 } ?: 0
+        loopEndIndex = notes.indexOfLast { it.startMs <= endMs }.takeIf { it != -1 } ?: notes.lastIndex
+
+        _state.value = _state.value.copy(
+            loopStartMs = loopStartMs,
+            loopEndMs = loopEndMs
+        )
+    }
+
+    override fun clearLoop() {
+        isLooping = false
+        loopStartMs = null
+        loopEndMs = null
+        loopStartIndex = 0
+        loopEndIndex = Int.MAX_VALUE
+        _state.value = _state.value.copy(
+            loopStartMs = null,
+            loopEndMs = null
+        )
+    }
+
+    override fun seekTo(targetMs: Long) {
+        val config = currentConfig ?: return
+        val notes = config.notes
+        val clampedMs = targetMs.coerceIn(0L, songDurationMs)
+
+        basePositionMs = clampedMs
+        lastResumeMonotonicMs = clock.elapsedRealtime()
+        currentChordHitNotes.clear()
+
+        // Find index of first note at or after clampedMs
+        val newIndex = notes.indexOfFirst { it.startMs >= clampedMs }.let {
+            if (it == -1) notes.size else it
+        }
+        val expected = notes.getOrNull(newIndex)
+        val expectedChord = getExpectedNotesForIndex(newIndex, notes)
+
+        _state.value = _state.value.copy(
+            currentNoteIndex = newIndex,
+            currentExpectedNote = expected,
+            currentExpectedNotes = expectedChord,
+            currentPositionMs = clampedMs,
+            isFinished = (newIndex >= notes.size && !isLooping),
+            lastEvaluatedResult = null,
+            lastPlayedNote = null
+        )
     }
 
     private fun getExpectedNotesForIndex(index: Int, notes: List<ExerciseNote>): List<ExerciseNote> {
@@ -146,7 +222,8 @@ class RealPracticeEngine(
         if (currentState.isFinished || currentState.isPaused) return
 
         val nowMonotonic = clock.elapsedRealtime()
-        val currentActiveMs = accumulatedActiveMs + (nowMonotonic - lastResumeMonotonicMs)
+        val deltaRealMs = nowMonotonic - lastResumeMonotonicMs
+        val currentActiveMs = accumulatedActiveMs + deltaRealMs
         val elapsedSec = currentActiveMs / 1000L
         val targetReached = targetDurationSec > 0 && elapsedSec >= targetDurationSec
 
@@ -154,36 +231,8 @@ class RealPracticeEngine(
         val notes = config.notes
 
         if (config.practiceMode == PracticeMode.RHYTHM) {
-            val currentPos = basePositionMs + (nowMonotonic - lastResumeMonotonicMs)
-
-            // Check if playhead has reached or exceeded song duration
-            if (currentPos >= songDurationMs && songDurationMs > 0) {
-                if (isLooping) {
-                    lapCounter++
-                    basePositionMs = 0L
-                    lastResumeMonotonicMs = nowMonotonic
-                    accumulatedActiveMs = currentActiveMs
-                    _state.value = currentState.copy(
-                        currentNoteIndex = 0,
-                        currentExpectedNote = notes.firstOrNull(),
-                        elapsedActiveSeconds = elapsedSec,
-                        elapsedActiveMs = currentActiveMs,
-                        currentPositionMs = 0L,
-                        lapCount = lapCounter,
-                        isTargetDurationReached = targetReached
-                    )
-                    return
-                } else {
-                    _state.value = currentState.copy(
-                        elapsedActiveSeconds = elapsedSec,
-                        elapsedActiveMs = currentActiveMs,
-                        currentPositionMs = songDurationMs,
-                        isFinished = true,
-                        isTargetDurationReached = targetReached
-                    )
-                    return
-                }
-            }
+            val deltaScaledMs = (deltaRealMs * speedMultiplier).toLong()
+            val currentPos = basePositionMs + deltaScaledMs
 
             // In Rhythm mode, advance expected note and record misses for notes whose window expired
             var activeIndex = currentState.currentNoteIndex
@@ -204,9 +253,61 @@ class RealPracticeEngine(
                 activeIndex++
             }
 
+            val effectiveEndMs = loopEndMs ?: songDurationMs
+
+            // Check if playhead has reached loop end or song duration
+            if (currentPos >= effectiveEndMs && effectiveEndMs > 0) {
+                if (isLooping) {
+                    lapCounter++
+                    val restartPos = loopStartMs ?: 0L
+                    basePositionMs = restartPos
+                    lastResumeMonotonicMs = nowMonotonic
+                    accumulatedActiveMs = currentActiveMs
+                    currentChordHitNotes.clear()
+
+                    val targetStartIdx = if (loopStartMs != null) {
+                        notes.indexOfFirst { it.startMs >= loopStartMs!! }.coerceAtLeast(0)
+                    } else {
+                        0
+                    }
+                    val first = notes.getOrNull(targetStartIdx)
+                    val firstChord = getExpectedNotesForIndex(targetStartIdx, notes)
+
+                    _state.value = currentState.copy(
+                        currentNoteIndex = targetStartIdx,
+                        currentExpectedNote = first,
+                        currentExpectedNotes = firstChord,
+                        missedNotesCount = newMissed,
+                        elapsedActiveSeconds = elapsedSec,
+                        elapsedActiveMs = currentActiveMs,
+                        currentPositionMs = restartPos,
+                        lapCount = lapCounter,
+                        isTargetDurationReached = targetReached
+                    )
+                    return
+                } else {
+                    _state.value = currentState.copy(
+                        currentNoteIndex = notes.size,
+                        currentExpectedNote = null,
+                        currentExpectedNotes = emptyList(),
+                        missedNotesCount = newMissed,
+                        elapsedActiveSeconds = elapsedSec,
+                        elapsedActiveMs = currentActiveMs,
+                        currentPositionMs = songDurationMs,
+                        isFinished = true,
+                        isTargetDurationReached = targetReached
+                    )
+                    return
+                }
+            }
+
+            val expected = notes.getOrNull(activeIndex)
+            val expectedChord = getExpectedNotesForIndex(activeIndex, notes)
+
             _state.value = currentState.copy(
                 currentNoteIndex = activeIndex,
-                currentExpectedNote = notes.getOrNull(activeIndex),
+                currentExpectedNote = expected,
+                currentExpectedNotes = expectedChord,
                 missedNotesCount = newMissed,
                 elapsedActiveSeconds = elapsedSec,
                 elapsedActiveMs = currentActiveMs,
@@ -237,7 +338,8 @@ class RealPracticeEngine(
         val currentActiveMs = accumulatedActiveMs + (nowMonotonic - lastResumeMonotonicMs)
 
         if (config.practiceMode == PracticeMode.RHYTHM) {
-            val currentPos = basePositionMs + (nowMonotonic - lastResumeMonotonicMs)
+            val deltaScaledMs = ((nowMonotonic - lastResumeMonotonicMs) * speedMultiplier).toLong()
+            val currentPos = basePositionMs + deltaScaledMs
             val expected = currentState.currentExpectedNote
 
             if (expected != null) {
@@ -272,6 +374,7 @@ class RealPracticeEngine(
                     _state.value = currentState.copy(
                         currentNoteIndex = nextIndex,
                         currentExpectedNote = notes.getOrNull(nextIndex),
+                        currentExpectedNotes = getExpectedNotesForIndex(nextIndex, notes),
                         correctNotesCount = newCorrect,
                         earlyNotesCount = newEarly,
                         lateNotesCount = newLate,
@@ -336,7 +439,7 @@ class RealPracticeEngine(
                     // Full chord completed, advance to next chord / note
                     currentChordHitNotes.clear()
                     val chordSize = expectedChord.size
-                    var nextIndex = currentState.currentNoteIndex + chordSize
+                    val nextIndex = currentState.currentNoteIndex + chordSize
 
                     // Check loop range limit
                     val isBeyondLoopEnd = nextIndex > loopEndIndex || nextIndex >= notes.size
@@ -428,7 +531,7 @@ class RealPracticeEngine(
         val now = clock.elapsedRealtime()
         val delta = (now - lastResumeMonotonicMs)
         accumulatedActiveMs += delta
-        basePositionMs += delta
+        basePositionMs += (delta * speedMultiplier).toLong()
         isCurrentlyPaused = true
         _state.value = _state.value.copy(
             isPaused = true,
@@ -453,7 +556,7 @@ class RealPracticeEngine(
             val now = clock.elapsedRealtime()
             val delta = (now - lastResumeMonotonicMs)
             accumulatedActiveMs += delta
-            basePositionMs += delta
+            basePositionMs += (delta * speedMultiplier).toLong()
             isCurrentlyPaused = true
         }
 

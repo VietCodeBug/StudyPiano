@@ -227,7 +227,7 @@ fun PianoKeyboardView(
                                     modifier = Modifier
                                         .size(circleSize)
                                         .background(
-                                            if (targetHighlight.hand == HandMode.LEFT) Color(0xFF8E44AD) else PianoPrimary,
+                                            if (targetHighlight.hand == HandMode.LEFT) Color(0xFFF97316) else PianoPrimary,
                                             shape = CircleShape
                                         ),
                                     contentAlignment = Alignment.Center
@@ -314,7 +314,7 @@ fun PianoKeyboardView(
                                     .padding(bottom = 3.dp)
                                     .size(if (isDenseMode) 12.dp else 16.dp)
                                     .background(
-                                        if (targetHighlight.hand == HandMode.LEFT) Color(0xFF8E44AD) else PianoPrimary,
+                                        if (targetHighlight.hand == HandMode.LEFT) Color(0xFFF97316) else PianoPrimary,
                                         shape = CircleShape
                                     ),
                                 contentAlignment = Alignment.Center

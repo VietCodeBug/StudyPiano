@@ -29,6 +29,7 @@ interface SongRepository {
     suspend fun toggleFavorite(id: String)
     suspend fun deleteSong(id: String)
     suspend fun updateLastPracticed(id: String)
+    suspend fun seedCurriculumRepertoire(): Int
 
     // Practice Presets (Gate D3)
     fun getPracticePresets(songId: String): Flow<List<SongPracticePreset>>

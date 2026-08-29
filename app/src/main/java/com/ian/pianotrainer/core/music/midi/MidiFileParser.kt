@@ -1,5 +1,6 @@
 package com.ian.pianotrainer.core.music.midi
 
+import com.ian.pianotrainer.core.music.DefaultHandSeparationEngine
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
 import java.io.EOFException
@@ -181,7 +182,10 @@ object MidiFileParser {
             }
         }
 
-        // 5. Intelligent Hand Assignment Heuristics (no reflection)
+        // 5. Hand Assignment
+        // Format 1 with exactly 2 note-tracks: compare average pitch per track.
+        // Single track (Format 0 or Format 1 with 1 track): use HandSeparationEngine
+        //   for per-note separation instead of the broken whole-track heuristic.
         val finalTracks = if (processedTracks.size == 2) {
             val avg0 = processedTracks[0].notes.map { it.midiNote }.average()
             val avg1 = processedTracks[1].notes.map { it.midiNote }.average()
@@ -197,14 +201,22 @@ object MidiFileParser {
                 )
             }
         } else {
+            // Single track or 3+ tracks: use HandSeparationEngine for per-note assignment
+            val engine = DefaultHandSeparationEngine()
             processedTracks.map { track ->
-                val avgPitch = track.notes.map { it.midiNote }.average()
-                val hand = when {
-                    avgPitch >= 60 -> "RIGHT"
-                    avgPitch <= 55 -> "LEFT"
+                val result = engine.separate(track.notes)
+                val hasLeft = result.leftHandNoteCount > 0
+                val hasRight = result.rightHandNoteCount > 0
+                val defaultHand = when {
+                    hasLeft && hasRight -> "BOTH"
+                    hasLeft -> "LEFT"
+                    hasRight -> "RIGHT"
                     else -> "BOTH"
                 }
-                applyHandToTrack(track, hand)
+                track.copy(
+                    defaultHand = defaultHand,
+                    notes = result.notes
+                )
             }
         }
 

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.Pause
@@ -119,7 +120,7 @@ fun PracticePlayerScreen(
     // Handle background lifecycle events: auto pause
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+            if (event == Lifecycle.Event.ON_STOP) {
                 viewModel.onBackgroundPause()
             }
         }
@@ -192,7 +193,7 @@ fun PracticePlayerScreen(
             .testTag("practice_player_screen")
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // 1. Hideable Compact Top Bar (~48dp)
+            // 1. Sleek Compact Top Bar (44dp)
             AnimatedVisibility(
                 visible = uiState.isToolbarVisible,
                 enter = slideInVertically() + fadeIn(),
@@ -209,6 +210,14 @@ fun PracticePlayerScreen(
                     isLooping = uiState.isLooping,
                     loopPointA = uiState.loopPointA,
                     loopPointB = uiState.loopPointB,
+                    isDemoMode = uiState.isDemoMode,
+                    isAppSoundEnabled = uiState.isAppSoundEnabled,
+                    onToggleDemoMode = viewModel::toggleDemoMode,
+                    onToggleAppSound = viewModel::toggleAppSound,
+                    onTogglePracticeMode = {
+                        val nextMode = if (uiState.practiceMode == PracticeMode.WAIT_FOR_NOTE) PracticeMode.RHYTHM else PracticeMode.WAIT_FOR_NOTE
+                        viewModel.setPracticeMode(nextMode)
+                    },
                     onPauseToggle = viewModel::togglePause,
                     onRestart = viewModel::restart,
                     onSpeedChange = viewModel::setPlaybackSpeed,
@@ -220,14 +229,14 @@ fun PracticePlayerScreen(
                     onClose = { showQuitDialog = true },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(44.dp)
                 )
             }
 
-            // 2. Main Piano Roll / Visualizer Stage (~67% of remaining height)
+            // 2. Main Piano Roll / Visualizer Stage
             Box(
                 modifier = Modifier
-                    .weight(0.67f)
+                    .weight(1f)
                     .fillMaxWidth()
             ) {
                 FallingNotesCanvas(
@@ -331,7 +340,7 @@ fun PracticePlayerScreen(
                 }
             }
 
-            // 3. Piano Keyboard at bottom edge (~33% of height)
+            // 3. Compact Reference Piano Keyboard at bottom edge
             val expectedChord = uiState.engineState.currentExpectedNotes.ifEmpty {
                 listOfNotNull(uiState.engineState.currentExpectedNote)
             }
@@ -345,21 +354,16 @@ fun PracticePlayerScreen(
                 )
             }
 
-            PianoKeyboardView(
-                onKeyPressed = viewModel::onVirtualKeyPressed,
-                onKeyReleased = viewModel::onVirtualKeyReleased,
-                activeNotes = uiState.activePressedNotes,
-                targetNotes = targetHighlight,
-                noteNamingMode = uiState.userSettings.noteNamingMode,
-                initialOctaveOffset = uiState.startOctave,
+            PracticeReferenceKeyboard(
                 rangeMode = uiState.rangeMode,
-                onOctaveChange = viewModel::setOctave,
-                onRangeModeChange = viewModel::setRangeMode,
-                upcomingNotes = uiState.exerciseNotes
-                    .filter { it.startMs in uiState.engineState.currentPositionMs..(uiState.engineState.currentPositionMs + 5000L) }
-                    .map { it.midiNote },
-                showRangeBar = false,
-                keyHeight = 120.dp,
+                baseOctave = uiState.startOctave,
+                activePressedNotes = uiState.activePressedNotes,
+                targetNotes = targetHighlight,
+                namingMode = uiState.userSettings.noteNamingMode,
+                lastResult = uiState.engineState.lastEvaluatedResult,
+                lastPlayedMidi = uiState.engineState.lastPlayedNote,
+                keyHeight = 72.dp,
+                onKeyPressed = viewModel::onVirtualKeyPressed,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("practice_keyboard")
@@ -405,6 +409,11 @@ fun PracticeCompactTopBar(
     isLooping: Boolean,
     loopPointA: Long?,
     loopPointB: Long?,
+    isDemoMode: Boolean = false,
+    isAppSoundEnabled: Boolean = true,
+    onToggleDemoMode: () -> Unit = {},
+    onToggleAppSound: () -> Unit = {},
+    onTogglePracticeMode: () -> Unit = {},
     onPauseToggle: () -> Unit,
     onRestart: () -> Unit,
     onSpeedChange: (Float) -> Unit,
@@ -433,7 +442,7 @@ fun PracticeCompactTopBar(
             // Left: Close & Title
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(0.30f, fill = false)
+                modifier = Modifier.weight(0.28f, fill = false)
             ) {
                 IconButton(
                     onClick = onClose,
@@ -457,10 +466,10 @@ fun PracticeCompactTopBar(
                 )
             }
 
-            // Center: Timeline & Mode & Loop Controls
+            // Center: Timeline & Mode & Sound Controls
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Current / Total Time
                 val curSec = currentPositionMs / 1000
@@ -504,21 +513,97 @@ fun PracticeCompactTopBar(
                     }
                 }
 
-                // Mode Badge
+                // Mode Switcher (Click to toggle Wait for Note vs Rhythm Flow)
                 Surface(
                     shape = PianoShapes.small,
-                    color = if (practiceMode == PracticeMode.WAIT_FOR_NOTE) PianoPrimaryContainer else PianoSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    color = if (practiceMode == PracticeMode.WAIT_FOR_NOTE) PianoPrimaryContainer else Color(0x2210B981),
+                    modifier = Modifier
+                        .clip(PianoShapes.small)
+                        .clickable { onTogglePracticeMode() }
+                        .padding(horizontal = 2.dp, vertical = 2.dp)
                 ) {
-                    Text(
-                        text = if (practiceMode == PracticeMode.WAIT_FOR_NOTE) "Chờ nốt" else "Theo nhịp",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = if (practiceMode == PracticeMode.WAIT_FOR_NOTE) PianoPrimary else PianoTextSecondary,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (practiceMode == PracticeMode.WAIT_FOR_NOTE) Icons.Default.HourglassTop else Icons.Default.Speed,
+                            contentDescription = null,
+                            tint = if (practiceMode == PracticeMode.WAIT_FOR_NOTE) PianoPrimary else Color(0xFF10B981),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = if (practiceMode == PracticeMode.WAIT_FOR_NOTE) "Chờ nốt" else "Theo nhịp",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = if (practiceMode == PracticeMode.WAIT_FOR_NOTE) PianoPrimary else Color(0xFF10B981)
+                        )
+                    }
+                }
+
+                // App Sound Mute / Unmute Toggle (Essential when digital piano is plugged in)
+                Surface(
+                    shape = PianoShapes.small,
+                    color = if (isAppSoundEnabled) PianoSurfaceVariant else Color(0x33EF4444),
+                    modifier = Modifier
+                        .clip(PianoShapes.small)
+                        .clickable { onToggleAppSound() }
+                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isAppSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                            contentDescription = "Âm thanh app",
+                            tint = if (isAppSoundEnabled) PianoPrimary else Color(0xFFEF4444),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = if (isAppSoundEnabled) "Âm thanh: BẬT" else "Âm thanh: TẮT (cho đàn)",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = if (isAppSoundEnabled) PianoTextPrimary else Color(0xFFEF4444)
+                        )
+                    }
+                }
+
+                // Demo Mode Button (plays real piano synth)
+                Surface(
+                    shape = PianoShapes.small,
+                    color = if (isDemoMode) Color(0xFF0284C7) else PianoSurfaceVariant,
+                    modifier = Modifier
+                        .clip(PianoShapes.small)
+                        .clickable { onToggleDemoMode() }
+                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Nghe mẫu",
+                            tint = if (isDemoMode) Color.White else PianoTextSecondary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = if (isDemoMode) "Đang nghe mẫu" else "Nghe mẫu",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = if (isDemoMode) Color.White else PianoTextSecondary
+                        )
+                    }
                 }
 
                 // Loop A-B quick buttons

@@ -383,6 +383,156 @@ class SongRepositoryImpl(
         database.songPracticePresetDao().deletePresetById(id)
     }
 
+    override suspend fun seedCurriculumRepertoire(): Int = withContext(Dispatchers.IO) {
+        val assetDataSource = com.ian.pianotrainer.data.assets.AssetCurriculumDataSource(context)
+        val courses = assetDataSource.getCurriculum().getOrNull() ?: return@withContext 0
+        var insertedCount = 0
+
+        database.withTransaction {
+            for (course in courses) {
+                for (lesson in course.lessons) {
+                    val exercise = lesson.exercise ?: continue
+                    if (exercise.notes.isEmpty()) continue
+
+                    val songId = "curriculum_${lesson.id}"
+                    val existing = importedSongDao.getSongById(songId)
+                    if (existing != null) continue
+
+                    val defaultBpm = exercise.defaultBpm.coerceIn(30, 240)
+                    val msPerBeat = 60000.0 / defaultBpm
+                    var currentStartMs = 0L
+
+                    val noteEntities = mutableListOf<SongNoteEntity>()
+                    val rightNotes = mutableListOf<SongNoteEntity>()
+                    val leftNotes = mutableListOf<SongNoteEntity>()
+
+                    for (note in exercise.notes) {
+                        val durationMs = (note.durationBeats * msPerBeat).toLong().coerceAtLeast(100L)
+                        val handStr = note.hand.name
+                        val trackIndex = if (note.hand == HandMode.LEFT) 1 else 0
+
+                        val sn = SongNoteEntity(
+                            songId = songId,
+                            trackIndex = trackIndex,
+                            channel = 0,
+                            midiNote = note.midiNote,
+                            velocity = 80,
+                            startTick = (currentStartMs * 480L / msPerBeat).toLong(),
+                            endTick = ((currentStartMs + durationMs) * 480L / msPerBeat).toLong(),
+                            startMs = currentStartMs,
+                            durationMs = durationMs,
+                            assignedHand = handStr,
+                            chordId = null
+                        )
+                        noteEntities.add(sn)
+                        if (note.hand == HandMode.LEFT) leftNotes.add(sn) else rightNotes.add(sn)
+                        currentStartMs += durationMs
+                    }
+
+                    val totalDurationMs = currentStartMs
+                    val tracks = mutableListOf<SongTrackEntity>()
+
+                    if (rightNotes.isNotEmpty()) {
+                        tracks.add(
+                            SongTrackEntity(
+                                songId = songId,
+                                trackIndex = 0,
+                                trackName = "Tay phải (Giai điệu)",
+                                channelSummary = "Ch 1 (Piano)",
+                                instrumentNumber = 0,
+                                noteCount = rightNotes.size,
+                                minMidiNote = rightNotes.minOf { it.midiNote },
+                                maxMidiNote = rightNotes.maxOf { it.midiNote },
+                                isSelectedForPractice = true,
+                                assignedHand = "RIGHT"
+                            )
+                        )
+                    }
+
+                    if (leftNotes.isNotEmpty()) {
+                        tracks.add(
+                            SongTrackEntity(
+                                songId = songId,
+                                trackIndex = 1,
+                                trackName = "Tay trái (Hòa âm / Bass)",
+                                channelSummary = "Ch 1 (Piano)",
+                                instrumentNumber = 0,
+                                noteCount = leftNotes.size,
+                                minMidiNote = leftNotes.minOf { it.midiNote },
+                                maxMidiNote = leftNotes.maxOf { it.midiNote },
+                                isSelectedForPractice = true,
+                                assignedHand = "LEFT"
+                            )
+                        )
+                    }
+
+                    val songEntity = ImportedSongEntity(
+                        id = songId,
+                        displayName = lesson.title.replace(Regex("""^\d+\.\s*"""), ""),
+                        originalFileName = "${lesson.id}.mid",
+                        localFilePath = null,
+                        fileHashSha256 = null,
+                        fileSizeBytes = null,
+                        midiFormatType = 1,
+                        ticksPerQuarterNote = 480,
+                        trackCount = tracks.size.coerceAtLeast(1),
+                        noteCount = noteEntities.size,
+                        durationMs = totalDurationMs,
+                        defaultBpm = defaultBpm,
+                        difficulty = course.difficulty,
+                        importedAt = System.currentTimeMillis() - (courses.indexOf(course) * 1000L),
+                        lastPracticedAt = null,
+                        isFavorite = false,
+                        parseStatus = "READY",
+                        parseErrorMessage = null
+                    )
+
+                    importedSongDao.insertSong(songEntity)
+                    songTrackDao.insertTracks(tracks)
+                    songNoteDao.insertNotes(noteEntities)
+                    songTempoDao.insertTempos(
+                        listOf(
+                            SongTempoEntity(
+                                songId = songId,
+                                startTick = 0L,
+                                startMs = 0L,
+                                microsecondsPerQuarterNote = (60000000L / defaultBpm),
+                                bpm = defaultBpm
+                            )
+                        )
+                    )
+                    insertedCount++
+                }
+            }
+        }
+
+        // Also seed any bundled MIDI files in assets/starter_songs (e.g. Flower Dance, Amazing Grace...)
+        try {
+            val starterFiles = context.assets.list("starter_songs") ?: emptyArray()
+            for (fileName in starterFiles) {
+                if (fileName.endsWith(".mid", ignoreCase = true) || fileName.endsWith(".midi", ignoreCase = true)) {
+                    val cleanTitle = fileName.substringBeforeLast(".").replace("_", " ").trim()
+                    val existingSongs = importedSongDao.getAllSongsList()
+                    if (existingSongs.none { it.displayName.equals(cleanTitle, ignoreCase = true) }) {
+                        context.assets.open("starter_songs/$fileName").use { stream ->
+                            val result = importMidiFile(
+                                inputStream = stream,
+                                originalFileName = fileName,
+                                fileSize = 1024L,
+                                customTitle = cleanTitle
+                            )
+                            if (result.isSuccess) {
+                                insertedCount++
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) { }
+
+        insertedCount
+    }
+
     private fun midiNoteToName(midiNote: Int): String {
         val noteNames = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
         val octave = (midiNote / 12) - 1

@@ -42,6 +42,10 @@ interface AppContainer {
     val settingsRepository: SettingsRepository
     val freePlayRepository: FreePlayRepository
     val backupRepository: com.ian.pianotrainer.domain.repository.BackupRepository
+    val pianoAudioEngine: com.ian.pianotrainer.core.audio.PianoAudioEngine
+    val midiPlaybackScheduler: com.ian.pianotrainer.core.audio.MidiPlaybackScheduler
+    val contentPackImporter: com.ian.pianotrainer.core.contentpack.ContentPackImporter
+    val onlineSongDownloader: com.ian.pianotrainer.core.contentpack.OnlineSongDownloader
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -137,5 +141,21 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             context = context,
             database = database
         )
+    }
+
+    override val pianoAudioEngine: com.ian.pianotrainer.core.audio.PianoAudioEngine by lazy {
+        com.ian.pianotrainer.core.audio.SoundPoolPianoEngine(context)
+    }
+
+    override val midiPlaybackScheduler: com.ian.pianotrainer.core.audio.MidiPlaybackScheduler by lazy {
+        com.ian.pianotrainer.core.audio.DefaultMidiPlaybackScheduler(pianoAudioEngine)
+    }
+
+    override val contentPackImporter: com.ian.pianotrainer.core.contentpack.ContentPackImporter by lazy {
+        com.ian.pianotrainer.core.contentpack.ContentPackImporter(context, songRepository)
+    }
+
+    override val onlineSongDownloader: com.ian.pianotrainer.core.contentpack.OnlineSongDownloader by lazy {
+        com.ian.pianotrainer.core.contentpack.OnlineSongDownloader(context, songRepository, contentPackImporter)
     }
 }

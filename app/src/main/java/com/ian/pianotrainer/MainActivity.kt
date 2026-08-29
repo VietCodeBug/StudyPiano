@@ -178,7 +178,9 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.MySongs.route) {
                             val viewModel: MySongsViewModel = viewModel(
                                 factory = MySongsViewModel.Factory(
-                                    songRepository = appContainer.songRepository
+                                    songRepository = appContainer.songRepository,
+                                    contentPackImporter = appContainer.contentPackImporter,
+                                    onlineSongDownloader = appContainer.onlineSongDownloader
                                 )
                             )
                             MySongsScreen(
@@ -288,7 +290,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 navArgument("practiceMode") {
                                     type = NavType.StringType
-                                    defaultValue = "WAIT_FOR_NOTE"
+                                    defaultValue = "RHYTHM"
                                 },
                                 navArgument("displayMode") {
                                     type = NavType.StringType
@@ -304,9 +306,9 @@ class MainActivity : ComponentActivity() {
                             val sourceType = backStackEntry.arguments?.getString("sourceType") ?: "DRILL"
                             val sourceId = backStackEntry.arguments?.getString("sourceId") ?: ""
                             val handModeStr = backStackEntry.arguments?.getString("handMode") ?: "RIGHT"
-                            val practiceModeStr = backStackEntry.arguments?.getString("practiceMode") ?: "WAIT_FOR_NOTE"
+                            val practiceModeStr = backStackEntry.arguments?.getString("practiceMode") ?: "RHYTHM"
                             val initialHand = runCatching { HandMode.valueOf(handModeStr) }.getOrDefault(HandMode.RIGHT)
-                            val initialPracticeMode = runCatching { PracticeMode.valueOf(practiceModeStr) }.getOrDefault(PracticeMode.WAIT_FOR_NOTE)
+                            val initialPracticeMode = runCatching { PracticeMode.valueOf(practiceModeStr) }.getOrDefault(PracticeMode.RHYTHM)
                             val initialBpm = backStackEntry.arguments?.getInt("bpm") ?: 60
 
                             val viewModel: PracticePlayerViewModel = viewModel(
@@ -324,7 +326,9 @@ class MainActivity : ComponentActivity() {
                                     exerciseRepository = appContainer.exerciseRepository,
                                     songRepository = appContainer.songRepository,
                                     progressRepository = appContainer.progressRepository,
-                                    settingsRepository = appContainer.settingsRepository
+                                    settingsRepository = appContainer.settingsRepository,
+                                    pianoAudioEngine = appContainer.pianoAudioEngine,
+                                    midiPlaybackScheduler = appContainer.midiPlaybackScheduler
                                 )
                             )
                             PracticePlayerScreen(
@@ -382,7 +386,8 @@ class MainActivity : ComponentActivity() {
                                     metronomeController = appContainer.metronomeController,
                                     settingsRepository = appContainer.settingsRepository,
                                     freePlayRepository = appContainer.freePlayRepository,
-                                    progressRepository = appContainer.progressRepository
+                                    progressRepository = appContainer.progressRepository,
+                                    pianoAudioEngine = appContainer.pianoAudioEngine
                                 )
                             )
                             FreePlayScreen(

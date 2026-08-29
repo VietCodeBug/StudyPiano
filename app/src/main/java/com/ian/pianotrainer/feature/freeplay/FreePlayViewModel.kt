@@ -74,6 +74,7 @@ class FreePlayViewModel(
     private val settingsRepository: SettingsRepository,
     private val freePlayRepository: FreePlayRepository,
     private val progressRepository: ProgressRepository? = null,
+    private val pianoAudioEngine: com.ian.pianotrainer.core.audio.PianoAudioEngine? = null,
     private val clock: PracticeClock = SystemPracticeClock()
 ) : ViewModel() {
 
@@ -267,6 +268,9 @@ class FreePlayViewModel(
     )
 
     init {
+        viewModelScope.launch {
+            pianoAudioEngine?.prepare()
+        }
         cleanupOldPendingRecordings()
         startAnimationClock()
         observeMidi()
@@ -349,6 +353,7 @@ class FreePlayViewModel(
             _activeNotes.value = _activeNotes.value + midiNote
             _lastNote.value = midiNote
             totalNotesPlayed++
+            pianoAudioEngine?.noteOn(midiNote, velocity)
 
             // Track active practice session
             if (sessionStartTimeMs == 0L) {
@@ -377,6 +382,7 @@ class FreePlayViewModel(
             _trails.value = _trails.value + newTrail
         } else {
             _activeNotes.value = _activeNotes.value - midiNote
+            pianoAudioEngine?.noteOff(midiNote)
 
             // Cap trail end
             val trailId = activeTrailsMap.remove(midiNote)
@@ -754,6 +760,7 @@ class FreePlayViewModel(
         stopPlayback()
         metronomeController.stop()
         animationClockJob?.cancel()
+        pianoAudioEngine?.allNotesOff()
         releaseMediaRecorder()
         persistPracticeSessionIfQualified()
     }
@@ -765,6 +772,7 @@ class FreePlayViewModel(
         private val settingsRepository: SettingsRepository,
         private val freePlayRepository: FreePlayRepository,
         private val progressRepository: ProgressRepository? = null,
+        private val pianoAudioEngine: com.ian.pianotrainer.core.audio.PianoAudioEngine? = null,
         private val clock: PracticeClock = SystemPracticeClock()
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -776,6 +784,7 @@ class FreePlayViewModel(
                 settingsRepository = settingsRepository,
                 freePlayRepository = freePlayRepository,
                 progressRepository = progressRepository,
+                pianoAudioEngine = pianoAudioEngine,
                 clock = clock
             ) as T
         }

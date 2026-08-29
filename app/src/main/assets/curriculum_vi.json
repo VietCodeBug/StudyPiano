@@ -95,59 +95,38 @@
       ]
     },
     {
-      "id": "course_3_fingers",
-      "title": "3. Số ngón tay",
-      "description": "Quy ước ngón tay quốc tế từ 1 đến 5 (Ngón cái là 1, ngón út là 5).",
-      "difficulty": "Cơ bản",
+      "id": "course_3_rhythm_basics",
+      "title": "3. Nhịp điệu và bài hát khởi động",
+      "description": "Làm quen với trường độ nốt nhạc qua 2 bài hát kinh điển đầu tiên.",
+      "difficulty": "Rất dễ",
       "lessons": [
         {
-          "id": "lesson_3_1_finger_numbers",
-          "title": "Quy ước ngón tay 1 - 2 - 3 - 4 - 5",
-          "objective": "Hiểu và nhớ ký hiệu số ngón tay cho cả hai bàn tay.",
-          "description": "Ngón 1 = Ngón cái, Ngón 2 = Ngón trỏ, Ngón 3 = Ngón giữa, Ngón 4 = Ngón áp út, Ngón 5 = Ngón út.",
-          "estimatedDurationMinutes": 7,
-          "handMode": "RIGHT",
-          "targetMidiNotes": [60, 62, 64, 65, 67],
-          "exercise": {
-            "id": "ex_3_1",
-            "title": "5 ngón tay trên 5 nốt C-D-E-F-G",
-            "defaultBpm": 60,
-            "notes": [
-              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
-              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
-              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
-              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
-              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" }
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "course_4_right_hand",
-      "title": "4. Luyện tay phải",
-      "description": "Các bài tập phối hợp độc lập ngón tay phải từ C4 đến G4.",
-      "difficulty": "Dễ",
-      "lessons": [
-        {
-          "id": "lesson_4_1_rh_scale_step",
-          "title": "Bước ngón liền bậc tay phải",
-          "objective": "Di chuyển ngón tay phải mượt mà từ C4 lên G4 rồi lùi về C4.",
-          "description": "Giữ cổ tay mềm mại, ấn phím dứt khoát và nhấc ngón nhẹ nhàng.",
+          "id": "lesson_3_1_hot_cross_buns",
+          "title": "1. Bánh mì nướng nóng (Hot Cross Buns)",
+          "objective": "Chơi giai điệu 3 nốt E4 - D4 - C4 với phách nốt đen và nốt trắng chuẩn xác.",
+          "description": "Bài học đầu tiên sử dụng 3 ngón tay 3, 2, 1 của tay phải. Rất dễ nhớ và tạo cảm giác nhịp điệu vững chắc.",
           "estimatedDurationMinutes": 10,
           "handMode": "RIGHT",
-          "targetMidiNotes": [60, 62, 64, 65, 67],
+          "targetMidiNotes": [64, 62, 60],
           "exercise": {
-            "id": "ex_4_1",
-            "title": "Lên dốc xuống dốc",
-            "defaultBpm": 70,
+            "id": "ex_3_1",
+            "title": "Hot Cross Buns",
+            "defaultBpm": 75,
             "notes": [
-              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
-              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
-              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
-              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
-              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
               { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
               { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" }
@@ -155,136 +134,67 @@
           }
         },
         {
-          "id": "lesson_4_2_rh_skips",
-          "title": "Nhảy quãng 3 tay phải",
-          "objective": "Luyện độc lập ngón 1-3 và 2-4 khi chơi cách nốt (C-E-D-F-E-G).",
-          "description": "Cách nốt giúp mở rộng độ linh hoạt của từng ngón tay.",
-          "estimatedDurationMinutes": 12,
+          "id": "lesson_3_2_mary_lamb",
+          "title": "2. Chú cừu nhỏ của Mary (Mary Had a Little Lamb)",
+          "objective": "Luyện chuyển ngón linh hoạt giữa C4, D4, E4, G4 trong giọng Đô trưởng.",
+          "description": "Giai điệu vui tươi giúp rèn luyện sự độc lập giữa các ngón 1, 2, 3 và 5.",
+          "estimatedDurationMinutes": 15,
           "handMode": "RIGHT",
-          "targetMidiNotes": [60, 64, 62, 65, 64, 67],
+          "targetMidiNotes": [64, 62, 60, 67],
           "exercise": {
-            "id": "ex_4_2",
-            "title": "Nhảy quãng C-E-D-F-E-G",
-            "defaultBpm": 60,
+            "id": "ex_3_2",
+            "title": "Mary Had a Little Lamb",
+            "defaultBpm": 80,
             "notes": [
-              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
               { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
-              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
-              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" }
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "course_5_left_hand",
-      "title": "5. Luyện tay trái",
-      "description": "Tập luyện sức mạnh và sự dẻo dai của tay trái ở quãng C3 - G3.",
-      "difficulty": "Dễ",
-      "lessons": [
-        {
-          "id": "lesson_5_1_lh_scale",
-          "title": "5 ngón tay trái cơ bản (C3 - G3)",
-          "objective": "Tay trái ngón 5 (ngón út) đặt tại C3, ngón 1 (ngón cái) đặt tại G3.",
-          "description": "Tay trái thường dùng để giữ bè đệm hoặc hợp âm nền bass. Luyện ngón 5 tay trái bấm đủ lực.",
-          "estimatedDurationMinutes": 10,
-          "handMode": "LEFT",
-          "targetMidiNotes": [48, 50, 52, 53, 55],
-          "exercise": {
-            "id": "ex_5_1",
-            "title": "Đi bè trầm tay trái",
-            "defaultBpm": 60,
-            "notes": [
-              { "midiNote": 48, "noteName": "C3", "durationBeats": 1.0, "fingerNumber": 5, "hand": "LEFT" },
-              { "midiNote": 50, "noteName": "D3", "durationBeats": 1.0, "fingerNumber": 4, "hand": "LEFT" },
-              { "midiNote": 52, "noteName": "E3", "durationBeats": 1.0, "fingerNumber": 3, "hand": "LEFT" },
-              { "midiNote": 53, "noteName": "F3", "durationBeats": 1.0, "fingerNumber": 2, "hand": "LEFT" },
-              { "midiNote": 55, "noteName": "G3", "durationBeats": 2.0, "fingerNumber": 1, "hand": "LEFT" }
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "course_6_both_hands",
-      "title": "6. Phối hợp hai tay",
-      "description": "Kết hợp hai tay đánh luân phiên và đồng thời.",
-      "difficulty": "Trung bình",
-      "lessons": [
-        {
-          "id": "lesson_6_1_parallel",
-          "title": "Hai tay song song",
-          "objective": "Tay trái C3-G3 và Tay phải C4-G4 đánh luân phiên chuyển giao.",
-          "description": "Bắt đầu với nhịp chậm 50 BPM để kiểm soát sự tập trung của cả 2 bán cầu não.",
-          "estimatedDurationMinutes": 15,
-          "handMode": "BOTH",
-          "targetMidiNotes": [48, 60, 52, 64, 55, 67],
-          "exercise": {
-            "id": "ex_6_1",
-            "title": "Đối thoại hai tay",
-            "defaultBpm": 55,
-            "notes": [
-              { "midiNote": 48, "noteName": "C3", "durationBeats": 1.0, "fingerNumber": 5, "hand": "LEFT" },
-              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
-              { "midiNote": 52, "noteName": "E3", "durationBeats": 1.0, "fingerNumber": 3, "hand": "LEFT" },
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
-              { "midiNote": 55, "noteName": "G3", "durationBeats": 1.0, "fingerNumber": 1, "hand": "LEFT" },
-              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" }
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "course_7_rhythm",
-      "title": "7. Làm quen với nhịp",
-      "description": "Hiểu giá trị nốt đen (1 phách), nốt trắng (2 phách) và nốt tròn (4 phách).",
-      "difficulty": "Cơ bản",
-      "lessons": [
-        {
-          "id": "lesson_7_1_note_values",
-          "title": "Nốt đen và nốt trắng",
-          "objective": "Giữ đúng trường độ phách nhịp khi đánh nốt.",
-          "description": "Nốt đen gõ 1 nhịp, nốt trắng giữ ngân dài bằng 2 nhịp gõ metronome.",
-          "estimatedDurationMinutes": 10,
-          "handMode": "RIGHT",
-          "targetMidiNotes": [60, 62, 64],
-          "exercise": {
-            "id": "ex_7_1",
-            "title": "Luyện nhịp 4/4 đơn giản",
-            "defaultBpm": 60,
-            "notes": [
-              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
-              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 2.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
               { "midiNote": 62, "noteName": "D4", "durationBeats": 2.0, "fingerNumber": 2, "hand": "RIGHT" },
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
               { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
-              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" }
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 3.0, "fingerNumber": 1, "hand": "RIGHT" }
             ]
           }
         }
       ]
     },
     {
-      "id": "course_8_first_song",
-      "title": "8. Bài nhạc đầu tiên",
-      "description": "Thực hành bài hát truyền thống ngắn gọn để tự tin hoàn thành bài hoàn chỉnh.",
+      "id": "course_4_classic_melodies",
+      "title": "4. Giai điệu kinh điển",
+      "description": "Các tác phẩm nổi tiếng thế giới: Ode to Joy, Twinkle Twinkle, Frère Jacques và Jingle Bells.",
       "difficulty": "Dễ",
       "lessons": [
         {
-          "id": "lesson_8_1_ode_to_joy",
-          "title": "Ode to Joy (Khải hoàn ca - Beethoven)",
-          "objective": "Chơi trọn vẹn đoạn điệp khúc kinh điển bằng tay phải.",
-          "description": "Bài học đánh dấu cột mốc hoàn thành giai đoạn vỡ lòng của bạn. Chúc mừng Việt Anh!",
-          "estimatedDurationMinutes": 20,
+          "id": "lesson_4_1_ode_to_joy",
+          "title": "3. Khải hoàn ca (Ode to Joy - Beethoven)",
+          "objective": "Chơi trọn vẹn chủ đề Giao hưởng số 9 bằng cả 5 ngón tay phải.",
+          "description": "Bản nhạc bất hủ của Beethoven với giai điệu hùng tráng và đầy năng lượng tích cực.",
+          "estimatedDurationMinutes": 15,
           "handMode": "RIGHT",
-          "targetMidiNotes": [64, 65, 67, 62, 60],
+          "targetMidiNotes": [60, 62, 64, 65, 67],
           "exercise": {
-            "id": "ex_8_1",
-            "title": "Ode to Joy - Đoạn 1",
-            "defaultBpm": 65,
+            "id": "ex_4_1",
+            "title": "Ode to Joy",
+            "defaultBpm": 80,
             "notes": [
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
@@ -299,7 +209,317 @@
               { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
               { "midiNote": 64, "noteName": "E4", "durationBeats": 1.5, "fingerNumber": 3, "hand": "RIGHT" },
               { "midiNote": 62, "noteName": "D4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 2.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_4_2_twinkle_star",
+          "title": "4. Ngôi sao nhỏ lấp lánh (Twinkle Twinkle Little Star)",
+          "objective": "Mở rộng quãng âm từ C4 lên A4 và giữ vững trường độ phách đôi.",
+          "description": "Giai điệu nổi tiếng của Mozart giúp rèn luyện khả năng nhảy quãng 5 từ Đô lên Son.",
+          "estimatedDurationMinutes": 15,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 67, 69, 65, 64, 62],
+          "exercise": {
+            "id": "ex_4_2",
+            "title": "Twinkle Twinkle Little Star",
+            "defaultBpm": 75,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 69, "noteName": "A4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 69, "noteName": "A4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_4_3_frere_jacques",
+          "title": "5. Kìa con bướm vàng (Frère Jacques)",
+          "objective": "Luyện tiết tấu móc đơn dồn dập ở đoạn điệp khúc G-A-G-F-E-C.",
+          "description": "Bài hát dân ca Pháp quen thuộc với tên gọi Việt Nam 'Kìa con bướm vàng'.",
+          "estimatedDurationMinutes": 12,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 62, 64, 65, 67, 69, 55],
+          "exercise": {
+            "id": "ex_4_3",
+            "title": "Frère Jacques",
+            "defaultBpm": 85,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 0.5, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 69, "noteName": "A4", "durationBeats": 0.5, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 0.5, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 55, "noteName": "G3", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 2, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_4_4_jingle_bells",
+          "title": "6. Tiếng chuông ngân (Jingle Bells)",
+          "objective": "Giữ nhịp điệu nốt lặp E4-E4-E4 liên tục và tạo độ nảy ngón vui tươi.",
+          "description": "Điệp khúc Giáng sinh kinh điển được yêu thích nhất mọi thời đại.",
+          "estimatedDurationMinutes": 15,
+          "handMode": "RIGHT",
+          "targetMidiNotes": [60, 62, 64, 65, 67],
+          "exercise": {
+            "id": "ex_4_4",
+            "title": "Jingle Bells - Điệp khúc",
+            "defaultBpm": 90,
+            "notes": [
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 2.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 2.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 4.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.5, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 0.5, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 4.0, "fingerNumber": 1, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_5_two_hands",
+      "title": "5. Hai tay phối hợp căn bản",
+      "description": "Kết hợp tay trái đệm hợp âm rải/bass và tay phải đánh giai điệu.",
+      "difficulty": "Dễ+",
+      "lessons": [
+        {
+          "id": "lesson_5_1_amazing_grace",
+          "title": "7. Ân điển diệu kỳ (Amazing Grace)",
+          "objective": "Kết hợp tay phải chơi giai điệu 3/4 mượt mà với tay trái đệm nốt bass sâu lắng.",
+          "description": "Tác phẩm tâm linh bất hủ với giai điệu ngũ cung truyền cảm hứng.",
+          "estimatedDurationMinutes": 20,
+          "handMode": "BOTH",
+          "targetMidiNotes": [55, 60, 64, 62, 57, 67, 36, 48],
+          "exercise": {
+            "id": "ex_5_1",
+            "title": "Amazing Grace (Hai tay)",
+            "defaultBpm": 68,
+            "notes": [
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 3.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 3.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 2.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 62, "noteName": "D4", "durationBeats": 1.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 41, "noteName": "F2", "durationBeats": 3.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 57, "noteName": "A3", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 3.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 55, "noteName": "G3", "durationBeats": 3.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 3.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 43, "noteName": "G2", "durationBeats": 3.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 2.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 3.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 3.0, "fingerNumber": 5, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_5_2_saints",
+          "title": "8. Hành khúc thánh đồ (When the Saints Go Marching In)",
+          "objective": "Luyện nhịp đảo phách (syncopation) và đối âm giữa 2 tay.",
+          "description": "Bản nhạc jazz dixieland truyền thống sôi động tràn ngập niềm vui.",
+          "estimatedDurationMinutes": 20,
+          "handMode": "BOTH",
+          "targetMidiNotes": [60, 64, 65, 67, 62, 36, 43],
+          "exercise": {
+            "id": "ex_5_2",
+            "title": "When the Saints Go Marching In",
+            "defaultBpm": 85,
+            "notes": [
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 4.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 4.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 4.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 4.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 65, "noteName": "F4", "durationBeats": 1.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 1.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 1.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 43, "noteName": "G2", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 1.0, "fingerNumber": 1, "hand": "RIGHT" },
               { "midiNote": 62, "noteName": "D4", "durationBeats": 2.0, "fingerNumber": 2, "hand": "RIGHT" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_6_masterpieces",
+      "title": "6. Tuyệt phẩm cổ điển",
+      "description": "Học các tác phẩm đỉnh cao: Für Elise, Canon in D, Prelude in C Major, Minuet in G.",
+      "difficulty": "Cuối sơ cấp",
+      "lessons": [
+        {
+          "id": "lesson_6_1_fur_elise",
+          "title": "14. Thư gửi Elise (Für Elise - Beethoven)",
+          "objective": "Chơi chủ đề A kinh điển với nửa cung E5-D#5 và kỹ thuật rải hợp âm A thứ.",
+          "description": "Bản nhạc piano nổi tiếng nhất thế giới của nhà soạn nhạc Ludwig van Beethoven.",
+          "estimatedDurationMinutes": 25,
+          "handMode": "BOTH",
+          "targetMidiNotes": [76, 75, 71, 74, 72, 69, 57, 45, 52],
+          "exercise": {
+            "id": "ex_6_1",
+            "title": "Für Elise - Chủ đề A",
+            "defaultBpm": 72,
+            "notes": [
+              { "midiNote": 76, "noteName": "E5", "durationBeats": 0.5, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 75, "noteName": "D#5", "durationBeats": 0.5, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 76, "noteName": "E5", "durationBeats": 0.5, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 75, "noteName": "D#5", "durationBeats": 0.5, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 76, "noteName": "E5", "durationBeats": 0.5, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 71, "noteName": "B4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 74, "noteName": "D5", "durationBeats": 0.5, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 72, "noteName": "C5", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 45, "noteName": "A2", "durationBeats": 1.5, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 69, "noteName": "A4", "durationBeats": 1.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 52, "noteName": "E3", "durationBeats": 0.5, "fingerNumber": 3, "hand": "LEFT" },
+              { "midiNote": 57, "noteName": "A3", "durationBeats": 0.5, "fingerNumber": 1, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 0.5, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 69, "noteName": "A4", "durationBeats": 0.5, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 47, "noteName": "B2", "durationBeats": 1.5, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 71, "noteName": "B4", "durationBeats": 1.5, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 52, "noteName": "E3", "durationBeats": 0.5, "fingerNumber": 3, "hand": "LEFT" },
+              { "midiNote": 56, "noteName": "G#3", "durationBeats": 0.5, "fingerNumber": 1, "hand": "LEFT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 68, "noteName": "G#4", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 71, "noteName": "B4", "durationBeats": 0.5, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 45, "noteName": "A2", "durationBeats": 1.5, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 72, "noteName": "C5", "durationBeats": 1.5, "fingerNumber": 5, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_6_2_canon_in_d",
+          "title": "12. Luân khúc Rê trưởng (Canon in D - Pachelbel)",
+          "objective": "Luyện chuỗi vòng hòa âm 8 hợp âm bất hủ của Pachelbel.",
+          "description": "Khúc hòa ca thanh cao lãng mạn thường được biểu diễn trong các hôn lễ sang trọng.",
+          "estimatedDurationMinutes": 25,
+          "handMode": "BOTH",
+          "targetMidiNotes": [50, 45, 47, 42, 43, 38, 74, 73, 71, 69, 67, 66],
+          "exercise": {
+            "id": "ex_6_2",
+            "title": "Canon in D - Chủ đề chính",
+            "defaultBpm": 65,
+            "notes": [
+              { "midiNote": 50, "noteName": "D3", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 74, "noteName": "D5", "durationBeats": 2.0, "fingerNumber": 5, "hand": "RIGHT" },
+              { "midiNote": 45, "noteName": "A2", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 73, "noteName": "C#5", "durationBeats": 2.0, "fingerNumber": 4, "hand": "RIGHT" },
+              { "midiNote": 47, "noteName": "B2", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 71, "noteName": "B4", "durationBeats": 2.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 42, "noteName": "F#2", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 69, "noteName": "A4", "durationBeats": 2.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 43, "noteName": "G2", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 38, "noteName": "D2", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 66, "noteName": "F#4", "durationBeats": 2.0, "fingerNumber": 2, "hand": "RIGHT" },
+              { "midiNote": 43, "noteName": "G2", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 67, "noteName": "G4", "durationBeats": 2.0, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 45, "noteName": "A2", "durationBeats": 2.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 69, "noteName": "A4", "durationBeats": 2.0, "fingerNumber": 4, "hand": "RIGHT" }
+            ]
+          }
+        },
+        {
+          "id": "lesson_6_3_prelude_c",
+          "title": "13. Khúc dạo đầu Đô trưởng (Prelude in C - J.S. Bach)",
+          "objective": "Luyện kỹ thuật rải nốt arpeggio đều đặn và uyển chuyển như dòng suối.",
+          "description": "Tuyệt phẩm mở đầu tập bình quân luật BWV 846 của Johann Sebastian Bach.",
+          "estimatedDurationMinutes": 30,
+          "handMode": "BOTH",
+          "targetMidiNotes": [48, 52, 55, 60, 64],
+          "exercise": {
+            "id": "ex_6_3",
+            "title": "Bach Prelude in C Major BWV 846",
+            "defaultBpm": 60,
+            "notes": [
+              { "midiNote": 48, "noteName": "C3", "durationBeats": 4.0, "fingerNumber": 5, "hand": "LEFT" },
+              { "midiNote": 52, "noteName": "E3", "durationBeats": 4.0, "fingerNumber": 3, "hand": "LEFT" },
+              { "midiNote": 55, "noteName": "G3", "durationBeats": 0.5, "fingerNumber": 1, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 55, "noteName": "G3", "durationBeats": 0.5, "fingerNumber": 1, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" },
+              { "midiNote": 64, "noteName": "E4", "durationBeats": 0.5, "fingerNumber": 3, "hand": "RIGHT" },
+              { "midiNote": 55, "noteName": "G3", "durationBeats": 0.5, "fingerNumber": 1, "hand": "LEFT" },
+              { "midiNote": 60, "noteName": "C4", "durationBeats": 0.5, "fingerNumber": 1, "hand": "RIGHT" }
             ]
           }
         }

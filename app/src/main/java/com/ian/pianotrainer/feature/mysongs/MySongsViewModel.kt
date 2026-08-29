@@ -27,7 +27,7 @@ enum class SongSortOption(val displayName: String) {
 data class SongPreparationState(
     val song: ImportedSong,
     val tracks: List<SongTrackEntity> = emptyList(),
-    val selectedPracticeMode: PracticeMode = PracticeMode.WAIT_FOR_NOTE,
+    val selectedPracticeMode: PracticeMode = PracticeMode.RHYTHM,
     val customBpm: Int = 60,
     val isLoadingTracks: Boolean = true
 )
@@ -45,7 +45,9 @@ data class MySongsUiState(
 )
 
 class MySongsViewModel(
-    private val songRepository: SongRepository
+    private val songRepository: SongRepository,
+    private val contentPackImporter: com.ian.pianotrainer.core.contentpack.ContentPackImporter? = null,
+    private val onlineSongDownloader: com.ian.pianotrainer.core.contentpack.OnlineSongDownloader? = null
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -111,6 +113,37 @@ class MySongsViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = MySongsUiState(isLoading = true)
     )
+
+    init {
+        viewModelScope.launch {
+            try {
+                val currentSongs = songRepository.getAllSongsList()
+                if (currentSongs.isEmpty()) {
+                    songRepository.seedCurriculumRepertoire()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun seedStarterSongs() {
+        viewModelScope.launch {
+            _isImporting.value = true
+            _errorMessage.value = null
+            _feedbackMessage.value = null
+            try {
+                val count = songRepository.seedCurriculumRepertoire()
+                if (count > 0) {
+                    _feedbackMessage.value = "Đã nạp $count bài hát giáo trình mẫu vào thư viện!"
+                } else {
+                    _feedbackMessage.value = "Toàn bộ bài hát giáo trình đã có sẵn trong thư viện"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Lỗi khi nạp bài mẫu: ${e.localizedMessage}"
+            } finally {
+                _isImporting.value = false
+            }
+        }
+    }
 
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query
@@ -289,17 +322,81 @@ class MySongsViewModel(
         }
     }
 
+    fun downloadSong(urlOrId: String, customTitle: String? = null) {
+        if (onlineSongDownloader == null) {
+            _errorMessage.value = "Chức năng tải bài trực tuyến chưa khả dụng"
+            return
+        }
+        viewModelScope.launch {
+            _isImporting.value = true
+            _errorMessage.value = null
+            _feedbackMessage.value = null
+            try {
+                val result = onlineSongDownloader.downloadAndImport(urlOrId, customTitle)
+                if (result.isSuccess && result.songId != null) {
+                    _feedbackMessage.value = "Tải thành công: ${result.title} (${result.noteCount} nốt)"
+                    val song = songRepository.getSongById(result.songId)
+                    if (song != null) {
+                        openSongPreparation(song)
+                    }
+                } else {
+                    _errorMessage.value = result.errorMessage ?: "Không thể tải bài nhạc từ liên kết"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Lỗi khi tải bài: ${e.localizedMessage}"
+            } finally {
+                _isImporting.value = false
+            }
+        }
+    }
+
+    fun importPackFromUri(uri: Uri, context: Context) {
+        if (contentPackImporter == null) {
+            importMidiFromUri(uri, context)
+            return
+        }
+        viewModelScope.launch {
+            _isImporting.value = true
+            _errorMessage.value = null
+            _feedbackMessage.value = null
+            try {
+                val stream = context.contentResolver.openInputStream(uri)
+                if (stream == null) {
+                    _errorMessage.value = "Không thể mở file gói được chọn"
+                    _isImporting.value = false
+                    return@launch
+                }
+                val result = stream.use { contentPackImporter.importPack(it) }
+                if (result.isSuccess && result.songId != null) {
+                    _feedbackMessage.value = "Nhập gói thành công: ${result.title} (${result.noteCount} nốt)"
+                    val song = songRepository.getSongById(result.songId)
+                    if (song != null) {
+                        openSongPreparation(song)
+                    }
+                } else {
+                    _errorMessage.value = result.errorMessage ?: "Lỗi khi nhập gói bài hát"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Lỗi khi xử lý gói: ${e.localizedMessage}"
+            } finally {
+                _isImporting.value = false
+            }
+        }
+    }
+
     fun clearFeedback() {
         _feedbackMessage.value = null
         _errorMessage.value = null
     }
 
     class Factory(
-        private val songRepository: SongRepository
+        private val songRepository: SongRepository,
+        private val contentPackImporter: com.ian.pianotrainer.core.contentpack.ContentPackImporter? = null,
+        private val onlineSongDownloader: com.ian.pianotrainer.core.contentpack.OnlineSongDownloader? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return MySongsViewModel(songRepository) as T
+            return MySongsViewModel(songRepository, contentPackImporter, onlineSongDownloader) as T
         }
     }
 }

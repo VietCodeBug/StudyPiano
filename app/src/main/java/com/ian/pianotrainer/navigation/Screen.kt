@@ -39,7 +39,7 @@ sealed class Screen(val route: String) {
             sourceType: String,
             sourceId: String = "",
             handMode: String = "RIGHT",
-            practiceMode: String = "WAIT_FOR_NOTE",
+            practiceMode: String = "RHYTHM",
             displayMode: String = "FALLING_NOTES",
             bpm: Int = 60
         ): String {

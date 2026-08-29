@@ -23,11 +23,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -118,12 +120,20 @@ fun MySongsScreen(
     var songToRename by remember { mutableStateOf<ImportedSong?>(null) }
     var renameInputText by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var downloadUrlText by remember { mutableStateOf("") }
+    var downloadTitleText by remember { mutableStateOf("") }
 
-    val midiPickerLauncher = rememberLauncherForActivityResult(
+    val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        uri?.let {
-            viewModel.importMidiFromUri(it, context)
+        uri?.let { pickedUri ->
+            val scheme = pickedUri.toString().lowercase()
+            if (scheme.endsWith(".zip") || scheme.endsWith(".pianopack")) {
+                viewModel.importPackFromUri(pickedUri, context)
+            } else {
+                viewModel.importMidiFromUri(pickedUri, context)
+            }
         }
     }
 
@@ -153,6 +163,137 @@ fun MySongsScreen(
                 songToDelete = null
             },
             onDismiss = { songToDelete = null }
+        )
+    }
+
+    // Download Song from OnlineSequencer / Link Dialog
+    if (showDownloadDialog) {
+        AlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, tint = PianoPrimary)
+                    Text(
+                        text = "Tải bài nhạc Online",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = PianoTextPrimary
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Nhập mã ID hoặc liên kết OnlineSequencer (hoặc URL tệp .mid/.pianopack trực tiếp):",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PianoTextSecondary
+                    )
+
+                    OutlinedTextField(
+                        value = downloadUrlText,
+                        onValueChange = { downloadUrlText = it },
+                        label = { Text("Mã ID hoặc URL bài nhạc") },
+                        placeholder = { Text("Ví dụ: 3134103 hoặc https://...") },
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(imageVector = Icons.Default.Link, contentDescription = null, tint = PianoPrimary)
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PianoPrimary,
+                            unfocusedBorderColor = PianoOutline,
+                            focusedTextColor = PianoTextPrimary,
+                            unfocusedTextColor = PianoTextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = downloadTitleText,
+                        onValueChange = { downloadTitleText = it },
+                        label = { Text("Tên bài hiển thị (tùy chọn)") },
+                        placeholder = { Text("Để trống sẽ tự động lấy tên gốc") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PianoPrimary,
+                            unfocusedBorderColor = PianoOutline,
+                            focusedTextColor = PianoTextPrimary,
+                            unfocusedTextColor = PianoTextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Text(
+                        text = "Gợi ý ID nhanh:",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = PianoTextSecondary
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = PianoShapes.small,
+                            color = PianoPrimaryContainer,
+                            modifier = Modifier
+                                .clip(PianoShapes.small)
+                                .clickable {
+                                    downloadUrlText = "3813152"
+                                    downloadTitleText = "Flower Dance - DJ Okawari"
+                                }
+                        ) {
+                            Text(
+                                text = "Flower Dance",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                                color = PianoPrimary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = PianoShapes.small,
+                            color = PianoPrimaryContainer,
+                            modifier = Modifier
+                                .clip(PianoShapes.small)
+                                .clickable {
+                                    downloadUrlText = "3134103"
+                                    downloadTitleText = "River Flows in You - Yiruma"
+                                }
+                        ) {
+                            Text(
+                                text = "River Flows in You",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                                color = PianoPrimary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (downloadUrlText.isNotBlank()) {
+                            viewModel.downloadSong(
+                                urlOrId = downloadUrlText,
+                                customTitle = downloadTitleText.takeIf { it.isNotBlank() }
+                            )
+                            showDownloadDialog = false
+                            downloadUrlText = ""
+                            downloadTitleText = ""
+                        }
+                    },
+                    modifier = Modifier.testTag("confirm_download_button")
+                ) {
+                    Text("Tải về & Thêm", color = PianoPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDownloadDialog = false }) {
+                    Text("Hủy", color = PianoTextSecondary)
+                }
+            },
+            containerColor = PianoSurface,
+            shape = PianoShapes.medium
         )
     }
 
@@ -243,13 +384,25 @@ fun MySongsScreen(
                         )
                     } else {
                         IconButton(
+                            onClick = { showDownloadDialog = true },
+                            modifier = Modifier.testTag("download_song_action_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = "Tải bài nhạc Online",
+                                tint = PianoPrimary
+                            )
+                        }
+
+                        IconButton(
                             onClick = {
-                                midiPickerLauncher.launch(
+                                filePickerLauncher.launch(
                                     arrayOf(
                                         "audio/midi",
                                         "audio/mid",
                                         "audio/x-midi",
                                         "application/x-midi",
+                                        "application/zip",
                                         "application/octet-stream",
                                         "*/*"
                                     )
@@ -407,22 +560,40 @@ fun MySongsScreen(
                         },
                         icon = Icons.Default.LibraryMusic,
                         actionButton = {
-                            PrimaryButton(
-                                text = "Nhập bài MIDI (.mid)",
-                                onClick = {
-                                    midiPickerLauncher.launch(
-                                        arrayOf(
-                                            "audio/midi",
-                                            "audio/mid",
-                                            "audio/x-midi",
-                                            "application/x-midi",
-                                            "application/octet-stream",
-                                            "*/*"
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                PrimaryButton(
+                                    text = "✨ Nạp 16 bài giáo trình có sẵn",
+                                    onClick = { viewModel.seedStarterSongs() },
+                                    tag = "seed_starter_songs_button"
+                                )
+
+                                PrimaryButton(
+                                    text = "☁️ Tải từ OnlineSequencer / Link",
+                                    onClick = { showDownloadDialog = true },
+                                    tag = "download_first_song_button"
+                                )
+
+                                TextButton(
+                                    onClick = {
+                                        filePickerLauncher.launch(
+                                            arrayOf(
+                                                "audio/midi",
+                                                "audio/mid",
+                                                "audio/x-midi",
+                                                "application/x-midi",
+                                                "application/zip",
+                                                "application/octet-stream",
+                                                "*/*"
+                                            )
                                         )
-                                    )
-                                },
-                                tag = "import_first_song_button"
-                            )
+                                    }
+                                ) {
+                                    Text("Nhập tệp từ máy (.mid / .pianopack)", color = PianoPrimary)
+                                }
+                            }
                         }
                     )
                 }
@@ -521,6 +692,49 @@ private fun SongItemCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = PianoTextSecondary
                     )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = PianoShapes.small,
+                            color = PianoPrimaryContainer
+                        ) {
+                            Text(
+                                text = "MIDI",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                color = PianoPrimary,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = PianoShapes.small,
+                            color = Color(0x2210B981)
+                        ) {
+                            Text(
+                                text = "Acoustic Synth",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                color = Color(0xFF10B981),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = PianoShapes.small,
+                            color = Color(0x22F97316)
+                        ) {
+                            Text(
+                                text = "2 tay",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF97316),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
                     if (song.lastPracticedAt != null) {
                         val lastPracticedStr = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(song.lastPracticedAt))
                         Text(

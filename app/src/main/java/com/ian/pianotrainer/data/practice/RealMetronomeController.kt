@@ -33,10 +33,10 @@ class RealMetronomeController(
     private val _bpm = MutableStateFlow(60)
     override val bpm: StateFlow<Int> = _bpm.asStateFlow()
 
-    // Pre-synthesized click waveforms (16-bit PCM mono 44100Hz)
+    // Pre-synthesized acoustic wooden metronome clicks (16-bit PCM mono 44100Hz)
     private val sampleRate = 44100
-    private val highClickPcm: ShortArray by lazy { generateClick(frequencyHz = 1500.0, durationMs = 25) }
-    private val lowClickPcm: ShortArray by lazy { generateClick(frequencyHz = 900.0, durationMs = 20) }
+    private val highClickPcm: ShortArray by lazy { generateWoodMetronomeClick(fundamentalHz = 520.0, isDownbeat = true) }
+    private val lowClickPcm: ShortArray by lazy { generateWoodMetronomeClick(fundamentalHz = 380.0, isDownbeat = false) }
 
     private var audioTrack: AudioTrack? = null
 
@@ -51,7 +51,7 @@ class RealMetronomeController(
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build()
                 )
                 .setAudioFormat(
@@ -70,16 +70,36 @@ class RealMetronomeController(
         }
     }
 
-    private fun generateClick(frequencyHz: Double, durationMs: Int): ShortArray {
+    /**
+     * Synthesizes an authentic acoustic wooden mechanical metronome (Wittner Maelzel) sound
+     * with warm wood body resonance, hollow chamber acoustic damping, and no harsh electronic beep.
+     */
+    private fun generateWoodMetronomeClick(fundamentalHz: Double, isDownbeat: Boolean): ShortArray {
+        val durationMs = if (isDownbeat) 28 else 20
         val numSamples = (sampleRate * (durationMs / 1000.0)).toInt()
         val samples = ShortArray(numSamples)
+        val attackSamples = (sampleRate * 0.0015).toInt() // 1.5ms soft transient
+
+        val twoPi = 2.0 * Math.PI
+        val decayRate = if (isDownbeat) 120.0 else 160.0
+        val gain = if (isDownbeat) 11000.0 else 8500.0
+
         for (i in 0 until numSamples) {
-            val time = i.toDouble() / sampleRate
-            // Exponential decay envelope
-            val decay = kotlin.math.exp(-i.toDouble() / (numSamples / 3.0))
-            val angle = 2.0 * Math.PI * frequencyHz * time
-            val sample = (sin(angle) * decay * 16000.0).toInt().coerceIn(-32767, 32767)
-            samples[i] = sample.toShort()
+            val t = i.toDouble() / sampleRate
+
+            // Natural wooden box resonances: fundamental + hollow sub + wooden shell overtone
+            val s1 = sin(twoPi * fundamentalHz * t)
+            val s2 = 0.35 * sin(twoPi * (fundamentalHz * 2.1) * t)
+            val s3 = 0.20 * sin(twoPi * (fundamentalHz * 0.52) * t)
+
+            val woodBody = s1 + s2 + s3
+            val decay = kotlin.math.exp(-decayRate * t)
+
+            // Attack envelope
+            val attackEnv = if (i < attackSamples) (i.toDouble() / attackSamples) else 1.0
+
+            val sampleVal = (woodBody * decay * attackEnv * gain).toInt().coerceIn(-32767, 32767)
+            samples[i] = sampleVal.toShort()
         }
         return samples
     }

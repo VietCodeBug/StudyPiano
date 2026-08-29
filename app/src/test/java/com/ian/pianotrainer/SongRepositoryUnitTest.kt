@@ -299,4 +299,12 @@ class SongRepositoryUnitTest {
         assertNotNull(song)
         assertEquals(HandMode.LEFT, song?.notes?.get(0)?.hand)
     }
+
+    @Test
+    fun seedCurriculumRepertoire_seedsLessonsIntoDatabase() = runTest {
+        val seededCount = repository.seedCurriculumRepertoire()
+        assertTrue(seededCount > 0)
+        val allSongs = repository.getAllSongsList()
+        assertTrue(allSongs.isNotEmpty())
+    }
 }

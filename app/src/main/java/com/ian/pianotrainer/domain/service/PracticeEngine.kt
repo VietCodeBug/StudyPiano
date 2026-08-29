@@ -33,7 +33,8 @@ data class PracticeEngineState(
     val lapCount: Int = 1,
     val isTargetDurationReached: Boolean = false,
     val targetDurationSeconds: Int = 0,
-    val practiceMode: PracticeMode = PracticeMode.WAIT_FOR_NOTE
+    val practiceMode: PracticeMode = PracticeMode.WAIT_FOR_NOTE,
+    val activeFeedback: com.ian.pianotrainer.domain.model.VisualNoteFeedback? = null
 )
 
 interface PracticeEngine {

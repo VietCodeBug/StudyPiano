@@ -9,16 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.io.RandomAccessFile
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import kotlin.math.PI
-import kotlin.math.exp
 import kotlin.math.pow
-import kotlin.math.roundToInt
-import kotlin.math.sin
 
 class SoundPoolPianoEngine(
     private val context: Context
@@ -27,7 +18,6 @@ class SoundPoolPianoEngine(
     companion object {
         private const val TAG = "SoundPoolPianoEngine"
         private const val MAX_POLYPHONY = 48
-        private const val SAMPLE_RATE = 44100 // High-fidelity 44.1kHz audio
 
         // Anchor pitches across 88 keys: A0, C1, C2, C3, C4, C5, C6, C7, C8
         val ANCHOR_MIDI_NOTES = intArrayOf(21, 24, 36, 48, 60, 72, 84, 96, 108)
@@ -64,12 +54,12 @@ class SoundPoolPianoEngine(
 
             soundPool = pool
 
-            // Load samples from assets if available, or generate acoustic harmonic piano anchors
-            val loadedCount = loadOrGenerateAnchors(pool)
+            // No synthesized fallback: silence is safer than misrepresenting generated tones as piano.
+            val loadedCount = loadBundledSamples(pool)
 
             isPrepared = true
             _state.value = _state.value.copy(
-                isReady = true,
+                isReady = loadedCount > 0,
                 loadedSampleCount = loadedCount
             )
             Log.i(TAG, "PianoAudioEngine prepared with $loadedCount anchor samples.")
@@ -79,135 +69,24 @@ class SoundPoolPianoEngine(
         }
     }
 
-    private fun loadOrGenerateAnchors(pool: SoundPool): Int {
+    private fun loadBundledSamples(pool: SoundPool): Int {
         var count = 0
-        val sampleDir = File(context.cacheDir, "piano_anchors_v2").apply { mkdirs() }
-
         for (anchorMidi in ANCHOR_MIDI_NOTES) {
-            val assetName = "piano_samples/piano_$anchorMidi.ogg"
-            var loaded = false
-
-            // 1. Try loading asset if present
+            val assetName = "piano_samples/piano_${anchorMidi}_medium.ogg"
             try {
-                val afd = context.assets.openFd(assetName)
-                val soundId = pool.load(afd, 1)
-                if (soundId > 0) {
-                    sampleSoundIds[anchorMidi] = soundId
-                    count++
-                    loaded = true
-                }
-            } catch (ignored: Exception) { }
-
-            // 2. Otherwise generate / load cached high-fidelity acoustic wave file
-            if (!loaded) {
-                val targetFile = File(sampleDir, "piano_anchor_$anchorMidi.wav")
-                if (!targetFile.exists() || targetFile.length() < 1000) {
-                    generatePianoWaveFile(targetFile, anchorMidi)
-                }
-                if (targetFile.exists()) {
-                    val soundId = pool.load(targetFile.absolutePath, 1)
+                context.assets.openFd(assetName).use { afd ->
+                    val soundId = pool.load(afd, 1)
                     if (soundId > 0) {
                         sampleSoundIds[anchorMidi] = soundId
                         count++
                     }
                 }
+            } catch (_: Exception) {
+                // Missing licensed samples intentionally produce silence.
             }
         }
         return count
     }
-
-    /**
-     * Synthesizes a warm acoustic grand piano waveform with string inharmonicity,
-     * soft physical mallet attack, multi-partial exponential decay, and smooth envelope.
-     */
-    private fun generatePianoWaveFile(targetFile: File, midiNote: Int) {
-        val f0 = 440.0 * 2.0.pow((midiNote - 69) / 12.0)
-        // Duration: low notes ring longer (3.0s), high notes shorter (1.5s)
-        val durationSec = when {
-            midiNote < 48 -> 3.0
-            midiNote < 72 -> 2.2
-            else -> 1.5
-        }
-        val totalSamples = (SAMPLE_RATE * durationSec).toInt()
-        val buffer = ShortArray(totalSamples)
-
-        // Harmonic weights and relative decay rates for acoustic piano string
-        val partialWeights = doubleArrayOf(1.0, 0.55, 0.35, 0.20, 0.12, 0.06, 0.03)
-        val partialDecayMult = doubleArrayOf(1.0, 1.4, 1.9, 2.6, 3.5, 4.8, 6.5)
-
-        val inharmonicityB = 0.00012 // Natural string stiffness inharmonicity
-        val twoPi = 2.0 * PI
-        val baseDecay = when {
-            midiNote < 48 -> 0.7
-            midiNote < 72 -> 1.1
-            else -> 1.8
-        }
-
-        val attackSamples = (SAMPLE_RATE * 0.006).toInt() // 6ms smooth attack to avoid pop
-
-        for (i in 0 until totalSamples) {
-            val t = i.toDouble() / SAMPLE_RATE
-            var sample = 0.0
-
-            // Additive string partials with inharmonicity
-            for (p in partialWeights.indices) {
-                val n = p + 1
-                val fn = n * f0 * Math.sqrt(1.0 + inharmonicityB * n * n)
-                if (fn < SAMPLE_RATE / 2.0) { // Nyquist safeguard
-                    val partialDecay = exp(-t * baseDecay * partialDecayMult[p])
-                    sample += partialWeights[p] * sin(twoPi * fn * t) * partialDecay
-                }
-            }
-
-            // Soft hammer strike body warmth (warm low resonance, no harsh white noise)
-            if (t < 0.025) {
-                val bodyResonance = sin(twoPi * (f0 * 0.5) * t) * (1.0 - t / 0.025) * 0.18
-                sample += bodyResonance
-            }
-
-            // Smooth attack ramp (first 6ms) to prevent audio clicks
-            if (i < attackSamples) {
-                val attackEnv = sin(0.5 * PI * (i.toDouble() / attackSamples))
-                sample *= attackEnv
-            }
-
-            // Scale to 16-bit PCM (warm master gain)
-            val clamped = (sample * 20000.0).coerceIn(-32767.0, 32767.0).roundToInt()
-            buffer[i] = clamped.toShort()
-        }
-
-        // Write standard 16-bit mono WAV header + PCM data
-        FileOutputStream(targetFile).use { fos ->
-            val header = createWavHeader(totalSamples * 2, SAMPLE_RATE)
-            fos.write(header)
-            val byteBuffer = ByteBuffer.allocate(buffer.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-            for (s in buffer) {
-                byteBuffer.putShort(s)
-            }
-            fos.write(byteBuffer.array())
-        }
-    }
-
-    private fun createWavHeader(dataSize: Int, sampleRate: Int): ByteArray {
-        val totalSize = dataSize + 36
-        val byteRate = sampleRate * 2 // 16-bit mono = 2 bytes per sample
-        return ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN).apply {
-            put("RIFF".toByteArray())
-            putInt(totalSize)
-            put("WAVE".toByteArray())
-            put("fmt ".toByteArray())
-            putInt(16) // Subchunk1Size for PCM
-            putShort(1) // AudioFormat 1 = PCM
-            putShort(1) // NumChannels 1 = Mono
-            putInt(sampleRate)
-            putInt(byteRate)
-            putShort(2) // BlockAlign
-            putShort(16) // BitsPerSample
-            put("data".toByteArray())
-            putInt(dataSize)
-        }.array()
-    }
-
     override fun noteOn(midiNote: Int, velocity: Int, channel: Int) {
         if (velocity <= 0) {
             noteOff(midiNote, channel)

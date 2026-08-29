@@ -452,6 +452,14 @@ class RealPracticeEngine(
                             else -> NoteResultType.CORRECT
                         }
 
+                        val feedback = com.ian.pianotrainer.domain.model.VisualNoteFeedback(
+                            chordId = chord.chordId,
+                            midiNote = midiNote,
+                            startMs = chord.startMs,
+                            result = resultType,
+                            eventTimestampMs = currentActiveMs
+                        )
+
                         recordedNoteResults.add(
                             PracticeNoteResult(
                                 sessionId = "",
@@ -490,7 +498,8 @@ class RealPracticeEngine(
                                 currentStreak = newStreak,
                                 maxStreak = newMaxStreak,
                                 lastEvaluatedResult = resultType,
-                                lastPlayedNote = midiNote
+                                lastPlayedNote = midiNote,
+                                activeFeedback = feedback
                             )
                         } else {
                             // Partial chord hit: stay at current chord
@@ -501,11 +510,20 @@ class RealPracticeEngine(
                                 currentStreak = newStreak,
                                 maxStreak = newMaxStreak,
                                 lastEvaluatedResult = resultType,
-                                lastPlayedNote = midiNote
+                                lastPlayedNote = midiNote,
+                                activeFeedback = feedback
                             )
                         }
                     }
                 } else {
+                    val feedback = com.ian.pianotrainer.domain.model.VisualNoteFeedback(
+                        chordId = chord.chordId,
+                        midiNote = midiNote,
+                        startMs = chord.startMs,
+                        result = NoteResultType.WRONG,
+                        eventTimestampMs = currentActiveMs
+                    )
+
                     // Wrong pitch or played out of tolerance window
                     recordedNoteResults.add(
                         PracticeNoteResult(
@@ -522,7 +540,8 @@ class RealPracticeEngine(
                         wrongNotesCount = currentState.wrongNotesCount + 1,
                         currentStreak = 0,
                         lastEvaluatedResult = NoteResultType.WRONG,
-                        lastPlayedNote = midiNote
+                        lastPlayedNote = midiNote,
+                        activeFeedback = feedback
                     )
                 }
             }
@@ -533,6 +552,14 @@ class RealPracticeEngine(
             if (midiNote in chord.expectedPitches) {
                 if (midiNote !in currentChordHitNotes) {
                     currentChordHitNotes.add(midiNote)
+
+                    val feedback = com.ian.pianotrainer.domain.model.VisualNoteFeedback(
+                        chordId = chord.chordId,
+                        midiNote = midiNote,
+                        startMs = chord.startMs,
+                        result = NoteResultType.CORRECT,
+                        eventTimestampMs = currentActiveMs
+                    )
 
                     recordedNoteResults.add(
                         PracticeNoteResult(
@@ -577,34 +604,35 @@ class RealPracticeEngine(
                                 currentStreak = newStreak,
                                 maxStreak = newMaxStreak,
                                 lastEvaluatedResult = NoteResultType.CORRECT,
-                                lastPlayedNote = midiNote
+                                lastPlayedNote = midiNote,
+                                activeFeedback = feedback
                             )
                         } else {
                             if (isLooping) {
                                 lapCounter++
                                 currentChordIndex = if (loopStartMs != null) {
-                                    expectedChords.indexOfFirst { it.startMs >= loopStartMs!! }.coerceAtLeast(0)
+                                    val idx = expectedChords.indexOfFirst { it.startMs >= loopStartMs!! }
+                                    if (idx >= 0) idx else 0
                                 } else {
                                     0
                                 }
                                 val firstChord = expectedChords.getOrNull(currentChordIndex)
                                 val firstNoteIdx = if (firstChord != null) {
                                     notes.indexOfFirst { it.startMs >= firstChord.startMs }.coerceAtLeast(0)
-                                } else {
-                                    0
-                                }
+                                } else 0
 
                                 _state.value = currentState.copy(
                                     currentNoteIndex = firstNoteIdx,
                                     currentExpectedNote = firstChord?.notes?.firstOrNull(),
                                     currentExpectedNotes = firstChord?.notes ?: emptyList(),
-                                    currentPositionMs = firstChord?.startMs ?: 0L,
+                                    currentPositionMs = firstChord?.startMs ?: (loopStartMs ?: 0L),
                                     correctNotesCount = newCorrect,
                                     currentStreak = newStreak,
                                     maxStreak = newMaxStreak,
                                     lastEvaluatedResult = NoteResultType.CORRECT,
                                     lastPlayedNote = midiNote,
                                     lapCount = lapCounter,
+                                    activeFeedback = feedback,
                                     isFinished = false
                                 )
                             } else {

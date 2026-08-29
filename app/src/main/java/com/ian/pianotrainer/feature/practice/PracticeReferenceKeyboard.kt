@@ -2,7 +2,8 @@ package com.ian.pianotrainer.feature.practice
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,35 +15,36 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoError
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoSuccess
-import com.ian.pianotrainer.core.music.MidiConstants
 import com.ian.pianotrainer.core.music.PianoGeometryCalculator
 import com.ian.pianotrainer.domain.model.HandMode
 import com.ian.pianotrainer.domain.model.KeyboardRangeMode
 import com.ian.pianotrainer.domain.model.NoteNamingMode
 import com.ian.pianotrainer.domain.model.NoteResultType
+import com.ian.pianotrainer.domain.model.VisualNoteFeedback
+
+
 
 @Composable
 fun PracticeReferenceKeyboard(
     modifier: Modifier = Modifier,
-    rangeMode: KeyboardRangeMode = KeyboardRangeMode.FULL_88_KEYS,
+    rangeMode: KeyboardRangeMode = KeyboardRangeMode.AUTO,
     baseOctave: Int = 3,
     activePressedNotes: Set<Int> = emptySet(),
     targetNotes: List<KeyHighlight> = emptyList(),
     namingMode: NoteNamingMode = NoteNamingMode.CDE,
-    lastResult: NoteResultType? = null,
-    lastPlayedMidi: Int? = null,
-    keyHeight: Dp = 68.dp,
-    onKeyPressed: ((Int) -> Unit)? = null
+    activeFeedback: VisualNoteFeedback? = null,
+    keyHeight: Dp = 56.dp,
+    enableInteraction: Boolean = false,
+    onKeyPressed: ((Int, Int) -> Unit)? = null,
+    onKeyReleased: ((Int) -> Unit)? = null
 ) {
     val targetNotesMap = remember(targetNotes) {
         targetNotes.associateBy { it.midiNote }
@@ -66,39 +68,49 @@ fun PracticeReferenceKeyboard(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(onKeyPressed, rangeMode, baseOctave) {
-                    if (onKeyPressed != null) {
-                        detectTapGestures(
-                            onPress = { offset ->
+                .then(
+                    if (enableInteraction && onKeyPressed != null && onKeyReleased != null) {
+                        Modifier.pointerInput(rangeMode, baseOctave) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
                                 val range = PianoGeometryCalculator.computeRangeForMode(
                                     rangeMode,
                                     baseOctave,
                                     size.width.toFloat()
                                 )
-                                // Check black keys first (top 60% of height)
                                 val blackKeyHeight = size.height * 0.62f
-                                var tappedNote: Int? = null
-                                if (offset.y <= blackKeyHeight) {
+                                var activeMidi: Int? = null
+
+                                if (down.position.y <= blackKeyHeight) {
                                     for ((midi, geom) in range.geometries) {
-                                        if (geom.isBlack && offset.x in geom.left..geom.right) {
-                                            tappedNote = midi
+                                        if (geom.isBlack && down.position.x in geom.left..geom.right) {
+                                            activeMidi = midi
                                             break
                                         }
                                     }
                                 }
-                                if (tappedNote == null) {
+                                if (activeMidi == null) {
                                     for ((midi, geom) in range.geometries) {
-                                        if (!geom.isBlack && offset.x in geom.left..geom.right) {
-                                            tappedNote = midi
+                                        if (!geom.isBlack && down.position.x in geom.left..geom.right) {
+                                            activeMidi = midi
                                             break
                                         }
                                     }
                                 }
-                                tappedNote?.let { onKeyPressed(it) }
+
+                                activeMidi?.let { midi ->
+                                    onKeyPressed(midi, 80)
+                                    // Wait until pointer up or gesture cancellation
+                                    do {
+                                        val event = awaitPointerEvent()
+                                        val isUpOrCancelled = event.changes.all { !it.pressed }
+                                    } while (!isUpOrCancelled)
+                                    onKeyReleased(midi)
+                                }
                             }
-                        )
-                    }
-                }
+                        }
+                    } else Modifier
+                )
         ) {
             val totalWidth = size.width
             val totalHeight = size.height
@@ -117,11 +129,11 @@ fun PracticeReferenceKeyboard(
                 val isPressed = activePressedNotes.contains(midiNote)
                 val targetHighlight = targetNotesMap[midiNote]
                 val isTarget = targetHighlight != null
-                val isEvaluated = lastPlayedMidi == midiNote
+                val isEvaluated = activeFeedback != null && activeFeedback.midiNote == midiNote
 
                 val fillColor = when {
-                    isEvaluated && lastResult == NoteResultType.CORRECT -> PianoSuccess
-                    isEvaluated && lastResult == NoteResultType.WRONG -> PianoError
+                    isEvaluated && activeFeedback?.result == NoteResultType.CORRECT -> PianoSuccess
+                    isEvaluated && (activeFeedback?.result == NoteResultType.WRONG || activeFeedback?.result == NoteResultType.MISSED) -> PianoError
                     isPressed && targetHighlight?.hand == HandMode.LEFT -> Color(0xFFF97316) // Orange for Left hand
                     isPressed -> Color(0xFF00E5FF) // Cyan/Blue for Right hand
                     isTarget -> Color(0xFFE2E8F0) // Clean off-white
@@ -182,11 +194,11 @@ fun PracticeReferenceKeyboard(
                 val isPressed = activePressedNotes.contains(midiNote)
                 val targetHighlight = targetNotesMap[midiNote]
                 val isTarget = targetHighlight != null
-                val isEvaluated = lastPlayedMidi == midiNote
+                val isEvaluated = activeFeedback != null && activeFeedback.midiNote == midiNote
 
                 val fillColor = when {
-                    isEvaluated && lastResult == NoteResultType.CORRECT -> PianoSuccess
-                    isEvaluated && lastResult == NoteResultType.WRONG -> PianoError
+                    isEvaluated && activeFeedback?.result == NoteResultType.CORRECT -> PianoSuccess
+                    isEvaluated && (activeFeedback?.result == NoteResultType.WRONG || activeFeedback?.result == NoteResultType.MISSED) -> PianoError
                     isPressed && targetHighlight?.hand == HandMode.LEFT -> Color(0xFFF97316) // Orange for Left hand
                     isPressed -> Color(0xFF00E5FF) // Cyan/Blue for Right hand
                     else -> Color(0xFF0F172A) // Sleek slate black

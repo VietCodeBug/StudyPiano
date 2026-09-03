@@ -41,7 +41,7 @@ fun FallingNotesCanvas(
     currentNoteIndex: Int,
     namingMode: NoteNamingMode,
     startOctave: Int = 3,
-    rangeMode: KeyboardRangeMode = KeyboardRangeMode.AUTO,
+    rangeMode: KeyboardRangeMode = KeyboardRangeMode.FULL_88_KEYS,
     noteDisplaySize: NoteDisplaySize = NoteDisplaySize.AUTO,
     lookAhead: VisualLookAhead = VisualLookAhead.MEDIUM,
     activeFeedback: VisualNoteFeedback? = null,
@@ -87,7 +87,6 @@ fun FallingNotesCanvas(
             val lookAheadEndMs = currentPositionMs + lookAhead.lookAheadMs
 
             // 1. Efficient upcoming MIDI notes slice for AUTO range calculator (zero per-frame collection allocations)
-            val upcomingRange = windowSelector.getVisibleNoteRange(currentPositionMs, lookAheadEndMs)
             val rangeResult = PianoGeometryCalculator.computeRangeForMode(
                 mode = rangeMode,
                 baseOctave = startOctave,
@@ -132,7 +131,8 @@ fun FallingNotesCanvas(
             }
 
             // Darker shaded columns for black keys
-            keyGeometries.values.filter { it.isBlack }.forEach { geom ->
+            for (geom in keyGeometries.values) {
+                if (!geom.isBlack) continue
                 drawRect(
                     color = Color(0xFF060913).copy(alpha = 0.6f),
                     topLeft = Offset(geom.left, 0f),
@@ -178,7 +178,8 @@ fun FallingNotesCanvas(
 
                     val baseColor = when {
                         isFeedbackTarget && activeFeedback!!.result == NoteResultType.CORRECT -> PianoSuccess
-                        isFeedbackTarget && (activeFeedback!!.result == NoteResultType.WRONG || activeFeedback!!.result == NoteResultType.MISSED) -> PianoError
+                        isFeedbackTarget && activeFeedback!!.result == NoteResultType.WRONG -> PianoError
+                        isFeedbackTarget && activeFeedback!!.result == NoteResultType.MISSED -> PianoError.copy(alpha = 0.5f)
                         note.hand == HandMode.LEFT -> Color(0xFFF97316)
                         note.hand == HandMode.RIGHT -> Color(0xFF00B8D9)
                         else -> Color(0xFF94A3B8)

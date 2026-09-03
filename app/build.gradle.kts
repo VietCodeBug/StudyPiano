@@ -13,8 +13,8 @@ android {
     applicationId = "com.ian.pianotrainer"
     minSdk = 26
     targetSdk = 35
-    versionCode = 3
-    versionName = "2.1.0"
+    versionCode = 4
+    versionName = "3.3.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

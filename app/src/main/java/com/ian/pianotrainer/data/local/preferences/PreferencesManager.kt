@@ -43,7 +43,7 @@ class PreferencesManager(private val context: Context) {
         val namingModeStr = preferences[Keys.NOTE_NAMING_MODE] ?: NoteNamingMode.CDE.name
         val displayModeStr = preferences[Keys.DEFAULT_DISPLAY_MODE] ?: DisplayMode.FALLING_NOTES.name
         val handModeStr = preferences[Keys.LAST_SELECTED_HAND_MODE] ?: HandMode.RIGHT.name
-        val rangeModeStr = preferences[Keys.KEYBOARD_RANGE_MODE] ?: KeyboardRangeMode.TWO_OCTAVES.name
+        val rangeModeStr = preferences[Keys.KEYBOARD_RANGE_MODE] ?: KeyboardRangeMode.FULL_88_KEYS.name
 
         UserSettings(
             noteNamingMode = runCatching { NoteNamingMode.valueOf(namingModeStr) }.getOrDefault(NoteNamingMode.CDE),
@@ -58,7 +58,7 @@ class PreferencesManager(private val context: Context) {
             dailyGoalMinutes = preferences[Keys.DAILY_GOAL_MINUTES] ?: 20,
             countInOption = preferences[Keys.COUNT_IN_OPTION] ?: "OFF",
             autoReconnectMidi = preferences[Keys.AUTO_RECONNECT_MIDI] ?: true,
-            keyboardRangeMode = runCatching { KeyboardRangeMode.valueOf(rangeModeStr) }.getOrDefault(KeyboardRangeMode.TWO_OCTAVES),
+            keyboardRangeMode = runCatching { KeyboardRangeMode.valueOf(rangeModeStr) }.getOrDefault(KeyboardRangeMode.FULL_88_KEYS),
             defaultLookAheadMs = preferences[Keys.DEFAULT_LOOK_AHEAD_MS] ?: 4000L
         )
     }

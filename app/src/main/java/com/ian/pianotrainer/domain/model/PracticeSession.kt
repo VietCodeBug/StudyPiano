@@ -112,6 +112,6 @@ data class UserSettings(
     val dailyGoalMinutes: Int = 20,
     val countInOption: String = "OFF", // OFF, ONE_MEASURE, TWO_MEASURES
     val autoReconnectMidi: Boolean = true,
-    val keyboardRangeMode: KeyboardRangeMode = KeyboardRangeMode.TWO_OCTAVES,
+    val keyboardRangeMode: KeyboardRangeMode = KeyboardRangeMode.FULL_88_KEYS,
     val defaultLookAheadMs: Long = 4000L
 )

@@ -10,13 +10,20 @@ data class PianoAudioState(
     val loadedSampleCount: Int = 0
 )
 
+sealed interface PianoAudioAvailability {
+    data object Loading : PianoAudioAvailability
+    data class Ready(val loadedSamples: Int) : PianoAudioAvailability
+    data class Unavailable(val reason: String) : PianoAudioAvailability
+    data class Error(val message: String) : PianoAudioAvailability
+}
 /**
- * High-performance real-time piano audio synthesis engine.
+ * Sample-backed real-time piano audio synthesis engine.
  * Supports velocity curves, CC64 sustain pedal, polyphony voice management,
  * and pitch shifting across the full 88-key piano keyboard (A0 - C8 / MIDI 21 - 108).
  */
 interface PianoAudioEngine {
     val state: StateFlow<PianoAudioState>
+    val availability: StateFlow<PianoAudioAvailability>
 
     suspend fun prepare()
     fun noteOn(midiNote: Int, velocity: Int, channel: Int = 0)

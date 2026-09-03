@@ -35,7 +35,7 @@ import com.ian.pianotrainer.domain.model.VisualNoteFeedback
 @Composable
 fun PracticeReferenceKeyboard(
     modifier: Modifier = Modifier,
-    rangeMode: KeyboardRangeMode = KeyboardRangeMode.AUTO,
+    rangeMode: KeyboardRangeMode = KeyboardRangeMode.FULL_88_KEYS,
     baseOctave: Int = 3,
     activePressedNotes: Set<Int> = emptySet(),
     targetNotes: List<KeyHighlight> = emptyList(),

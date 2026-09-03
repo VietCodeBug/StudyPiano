@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -633,7 +635,7 @@ private fun SongItemCard(
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Luyện bài",
-                            tint = PianoPrimary,
+                        tint = PianoPrimary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -773,6 +775,8 @@ fun SongPreparationBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.9f)
+                .imePadding()
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -790,7 +794,7 @@ fun SongPreparationBottomSheet(
                         maxLines = 1
                     )
                     Text(
-                        text = "Thời lượng: ${prepState.song.formattedDuration()} • Độ khó: ${prepState.song.difficulty}",
+                        text = stringResource(R.string.song_prep_duration_difficulty, prepState.song.formattedDuration(), prepState.song.difficulty),
                         style = MaterialTheme.typography.bodySmall,
                         color = PianoTextSecondary
                     )
@@ -799,7 +803,7 @@ fun SongPreparationBottomSheet(
                 IconButton(onClick = onRenameClick) {
                     Icon(
                         imageVector = Icons.Default.Edit,
-                        contentDescription = "Đổi tên",
+                        contentDescription = stringResource(R.string.song_prep_rename),
                         tint = PianoPrimary
                     )
                 }
@@ -810,7 +814,7 @@ fun SongPreparationBottomSheet(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
             // Mode Selection
-            SectionHeader(title = "Chế độ luyện tập")
+            SectionHeader(title = stringResource(R.string.song_prep_mode))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -851,7 +855,7 @@ fun SongPreparationBottomSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Tốc độ chơi (BPM)",
+                    text = stringResource(R.string.song_prep_tempo),
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = PianoTextPrimary
                 )
@@ -876,10 +880,10 @@ fun SongPreparationBottomSheet(
             )
 
             // Track & Hand Configurations
-            SectionHeader(title = "Cấu hình Track & Phân tay (${prepState.tracks.size} tracks)")
+            SectionHeader(title = stringResource(R.string.song_prep_tracks, prepState.tracks.size))
 
             if (prepState.isLoadingTracks) {
-                LoadingState(message = "Đang phân tích track MIDI...")
+                LoadingState(message = stringResource(R.string.song_prep_loading))
             } else {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -904,7 +908,7 @@ fun SongPreparationBottomSheet(
             // Sticky action footer
             // Start Practice Button
             PrimaryButton(
-                text = "Bắt đầu luyện bài",
+                text = stringResource(R.string.song_prep_start),
                 onClick = onStartPractice,
                 modifier = Modifier.fillMaxWidth(),
                 tag = "start_song_practice_button"

@@ -3,6 +3,7 @@ package com.ian.pianotrainer
 import com.ian.pianotrainer.core.audio.DefaultMidiPlaybackScheduler
 import com.ian.pianotrainer.core.audio.PianoAudioEngine
 import com.ian.pianotrainer.core.audio.PianoAudioState
+import com.ian.pianotrainer.core.audio.PianoAudioAvailability
 import com.ian.pianotrainer.core.audio.PlaybackRole
 import com.ian.pianotrainer.core.music.PracticeClock
 import com.ian.pianotrainer.core.music.SectionSlicer
@@ -33,6 +34,7 @@ class PlayerExperienceRegressionTest {
 
         private val _state = MutableStateFlow(PianoAudioState(isReady = true))
         override val state: StateFlow<PianoAudioState> = _state
+        override val availability: StateFlow<PianoAudioAvailability> = MutableStateFlow(PianoAudioAvailability.Ready(1))
 
         override suspend fun prepare() {}
         override fun noteOn(midiNote: Int, velocity: Int, channel: Int) {

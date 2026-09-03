@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ian.pianotrainer.core.music.SectionSlicer
+import com.ian.pianotrainer.core.music.PracticeClock
+import com.ian.pianotrainer.core.music.SystemPracticeClock
+import com.ian.pianotrainer.core.audio.PianoAudioAvailability
 import com.ian.pianotrainer.domain.model.DisplayMode
 import com.ian.pianotrainer.domain.model.ExerciseNote
 import com.ian.pianotrainer.domain.model.HandMode
@@ -39,6 +42,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+data class PracticeRestoreSnapshot(
+    val positionMs: Long,
+    val wasPaused: Boolean,
+    val practiceMode: PracticeMode,
+    val selectedSectionId: String?,
+    val metronomeWasRunning: Boolean
+)
 data class PracticePlayerUiState(
     val title: String = "",
     val sourceType: String = "LESSON",
@@ -77,7 +87,8 @@ data class PracticePlayerUiState(
     val selectedSection: LearningSection? = null,
     val showNoteNames: Boolean = false,
     val enableVirtualKeyInteraction: Boolean = false,
-    val demoPositionMs: Long = 0L
+    val demoPositionMs: Long = 0L,
+    val pianoAudioAvailability: PianoAudioAvailability = PianoAudioAvailability.Loading
 )
 
 class PracticePlayerViewModel(
@@ -97,7 +108,8 @@ class PracticePlayerViewModel(
     private val progressRepository: ProgressRepository,
     private val settingsRepository: SettingsRepository,
     private val pianoAudioEngine: com.ian.pianotrainer.core.audio.PianoAudioEngine,
-    private val midiPlaybackScheduler: com.ian.pianotrainer.core.audio.MidiPlaybackScheduler
+    private val midiPlaybackScheduler: com.ian.pianotrainer.core.audio.MidiPlaybackScheduler,
+    private val clock: PracticeClock = SystemPracticeClock()
 ) : ViewModel() {
 
     private val _activeNotes = MutableStateFlow<Set<Int>>(emptySet())
@@ -134,11 +146,21 @@ class PracticePlayerViewModel(
     private val _enableVirtualKeyInteraction = MutableStateFlow(false)
     private val _demoPositionMs = MutableStateFlow(0L)
 
+    private var prepareAudioJob: Job? = null
     private var tickJob: Job? = null
     private var countInJob: Job? = null
     private var demoJob: Job? = null
-    private var toolbarAutoHideJob: Job? = null
+    private var presetsJob: Job? = null
+    private var loadNotesJob: Job? = null
+    private var midiNoteJob: Job? = null
+    private var midiControlJob: Job? = null
+    private var engineFinishedJob: Job? = null
     private var lastActiveMetronomeBpm: Int = -1
+    private val toolbarAutoHideController by lazy {
+        ToolbarAutoHideController(viewModelScope) { _isToolbarVisible.value = it }
+    }
+    private var restoreSnapshot: PracticeRestoreSnapshot? = null
+    private val sustainRouter = MidiSustainRouter(pianoAudioEngine)
 
     private val _navigateToResult = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToResult: SharedFlow<String> = _navigateToResult.asSharedFlow()
@@ -162,18 +184,19 @@ class PracticePlayerViewModel(
         val bpm: Int,
         val speed: Float,
         val soundEnabled: Boolean,
+        val availability: PianoAudioAvailability,
         val transportMode: PlayerTransportMode,
         val demoPos: Long
     )
 
+    private data class TransportTiming(val bpm: Int, val speed: Float, val mode: PlayerTransportMode, val demoPos: Long)
     private val playbackAudioFlow = combine(
-        _currentBpm,
-        _speedMultiplier,
-        _isAppSoundEnabled,
-        _transportMode,
-        _demoPositionMs
-    ) { bpm, speed, sound, transport, demoPos ->
-        PlaybackAudioParams(bpm, speed, sound, transport, demoPos)
+        combine(_currentBpm, _speedMultiplier, _transportMode, _demoPositionMs) { bpm, speed, transport, demoPos ->
+            TransportTiming(bpm, speed, transport, demoPos)
+        },
+        combine(_isAppSoundEnabled, pianoAudioEngine.availability) { enabled, availability -> enabled to availability }
+    ) { timing, audio ->
+        PlaybackAudioParams(timing.bpm, timing.speed, audio.first, audio.second, timing.mode, timing.demoPos)
     }
 
     private data class ModeSettingsGroup(
@@ -238,6 +261,11 @@ class PracticePlayerViewModel(
         )
     }
 
+    private data class PlayerRepositoryState(
+        val settings: UserSettings, val loading: Boolean,
+        val playbackData: SongPlaybackData?, val presets: List<SongPracticePreset>
+    )
+
     private data class MetronomeContextGroup(
         val currentBeat: Int,
         val isMetro: Boolean,
@@ -258,19 +286,19 @@ class PracticePlayerViewModel(
             Pair(countIn, gradual)
         },
         combine(settingsRepository.userSettings, _isLoading, _songPlaybackData, _availablePresets) { settings, loading, playbackData, presets ->
-            listOf(settings, loading, playbackData, presets)
+            PlayerRepositoryState(settings, loading, playbackData, presets)
         }
-    ) { p1, p2, p3 ->
+    ) { p1, p2, repositoryState ->
         MetronomeContextGroup(
             currentBeat = p1.first,
             isMetro = p1.second,
             metroSound = p1.third,
             countInBeats = p2.first,
             gradualSpeedUp = p2.second,
-            settings = p3[0] as UserSettings,
-            loading = p3[1] as Boolean,
-            playbackData = p3[2] as? SongPlaybackData,
-            presets = (p3[3] as? List<*>)?.filterIsInstance<SongPracticePreset>() ?: emptyList()
+            settings = repositoryState.settings,
+            loading = repositoryState.loading,
+            playbackData = repositoryState.playbackData,
+            presets = repositoryState.presets
         )
     }
 
@@ -322,16 +350,17 @@ class PracticePlayerViewModel(
             selectedSection = sl.selectedSection,
             showNoteNames = modes.showNoteNames,
             enableVirtualKeyInteraction = modes.enableInteraction,
-            demoPositionMs = audio.demoPos
+            demoPositionMs = audio.demoPos,
+            pianoAudioAvailability = audio.availability
         )
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = PracticePlayerUiState(title = title, sourceType = sourceType, sourceId = sourceId)
     )
 
     init {
-        viewModelScope.launch {
+        prepareAudioJob = viewModelScope.launch {
             pianoAudioEngine.prepare()
         }
         loadPresetsIfSong()
@@ -361,7 +390,8 @@ class PracticePlayerViewModel(
 
     private fun loadPresetsIfSong() {
         if (sourceType == "SONG" && sourceId.isNotBlank()) {
-            viewModelScope.launch {
+            presetsJob?.cancel()
+            presetsJob = viewModelScope.launch {
                 songRepository.getPracticePresets(sourceId).collect { presets ->
                     _availablePresets.value = presets
                 }
@@ -370,7 +400,8 @@ class PracticePlayerViewModel(
     }
 
     private fun loadNotesAndStart() {
-        viewModelScope.launch {
+        loadNotesJob?.cancel()
+        loadNotesJob = viewModelScope.launch {
             _isLoading.value = true
             _activeNotes.value = emptySet()
             val playbackData = if (sourceType == "SONG" && sourceId.isNotBlank()) {
@@ -399,13 +430,16 @@ class PracticePlayerViewModel(
             )
             _sections.value = slicedSections
 
-            val initialSec = if (initialSectionId != null) {
+            val existingSec = _selectedSection.value
+            val initialSec = if (existingSec != null) {
+                slicedSections.firstOrNull { it.id == existingSec.id } ?: existingSec
+            } else if (initialSectionId != null) {
                 slicedSections.firstOrNull { it.id == initialSectionId }
             } else null
             _selectedSection.value = initialSec
 
             val effectiveNotes = if (initialSec != null) {
-                rawNotes.filter { it.startMs in initialSec.startMs..initialSec.endMs }
+                SectionNoteFilter.filter(rawNotes, initialSec, initialSec == slicedSections.lastOrNull())
             } else {
                 rawNotes
             }
@@ -436,7 +470,7 @@ class PracticePlayerViewModel(
                 if (initialSec != null) {
                     _loopPointA.value = initialSec.startMs
                     _loopPointB.value = initialSec.endMs
-                    practiceEngine.setLoopRangeMs(initialSec.startMs, initialSec.endMs)
+                    if (_isLooping.value) practiceEngine.setLoopRangeMs(initialSec.startMs, initialSec.endMs)
                     practiceEngine.seekTo(initialSec.startMs)
                 }
 
@@ -453,6 +487,7 @@ class PracticePlayerViewModel(
                 } else {
                     startMetronomeIfNeeded()
                 }
+                if (_currentPracticeMode.value == PracticeMode.RHYTHM) scheduleToolbarAutoHide()
             }
         }
     }
@@ -461,7 +496,7 @@ class PracticePlayerViewModel(
         _selectedSection.value = section
         val raw = _allSourceNotes.value
         val filtered = if (section != null) {
-            raw.filter { it.startMs in section.startMs..section.endMs }
+            SectionNoteFilter.filter(raw, section, section == _sections.value.lastOrNull())
         } else {
             raw
         }
@@ -471,7 +506,7 @@ class PracticePlayerViewModel(
             val endMs = section?.endMs ?: filtered.maxOf { it.startMs + it.durationMs }
             _loopPointA.value = startMs
             _loopPointB.value = endMs
-            practiceEngine.setLoopRangeMs(startMs, endMs)
+            if (_isLooping.value) practiceEngine.setLoopRangeMs(startMs, endMs) else practiceEngine.clearLoop()
             seekTo(startMs)
         }
     }
@@ -510,61 +545,85 @@ class PracticePlayerViewModel(
     }
 
     fun startDemo() {
+        val engineBeforeDemo = practiceEngine.state.value
+        pianoAudioEngine.sustainPedal(false)
+        pianoAudioEngine.allNotesOff()
+        restoreSnapshot = PracticeRestoreSnapshot(
+            positionMs = engineBeforeDemo.currentPositionMs,
+            wasPaused = engineBeforeDemo.isPaused,
+            practiceMode = _currentPracticeMode.value,
+            selectedSectionId = _selectedSection.value?.id,
+            metronomeWasRunning = metronomeController.isRunning.value
+        )
         practiceEngine.pause()
         metronomeController.stop()
         _transportMode.value = PlayerTransportMode.DEMO
         midiPlaybackScheduler.setDemoMode(true)
 
-        val startPos = _selectedSection.value?.startMs ?: practiceEngine.state.value.currentPositionMs
-        val endPos = _selectedSection.value?.endMs ?: (_exerciseNotes.value.maxOfOrNull { it.startMs + it.durationMs } ?: 60000L)
+        val section = _selectedSection.value
+        val startPos = section?.startMs ?: engineBeforeDemo.currentPositionMs
+        val endPos = section?.endMs ?: (_exerciseNotes.value.maxOfOrNull { it.startMs + it.durationMs } ?: startPos)
         _demoPositionMs.value = startPos
         midiPlaybackScheduler.play(startPos)
+        scheduleToolbarAutoHide()
 
         demoJob?.cancel()
         demoJob = viewModelScope.launch {
-            var currentPos = startPos
-            val startTimeMonotonic = System.currentTimeMillis()
-
+            val timeline = DemoTimeline(startPos, clock.elapsedRealtime(), _speedMultiplier.value)
             while (_transportMode.value == PlayerTransportMode.DEMO) {
-                val elapsedReal = System.currentTimeMillis() - startTimeMonotonic
-                val elapsedScaled = (elapsedReal * _speedMultiplier.value).toLong()
-                currentPos = startPos + elapsedScaled
-                _demoPositionMs.value = currentPos
-                midiPlaybackScheduler.tick(currentPos)
-
+                timeline.setSpeed(_speedMultiplier.value)
+                val currentPos = timeline.positionAt(clock.elapsedRealtime())
                 if (currentPos >= endPos) {
-                    if (_isLooping.value) {
-                        currentPos = startPos
-                        midiPlaybackScheduler.seekTo(startPos)
+                    if (_isLooping.value && endPos > startPos) {
+                        pianoAudioEngine.sustainPedal(false)
+                        pianoAudioEngine.sustainPedal(false)
+                        pianoAudioEngine.allNotesOff()
+                        timeline.reset(startPos, clock.elapsedRealtime())
+                        _demoPositionMs.value = startPos
+                        midiPlaybackScheduler.play(startPos)
                     } else {
+                        _demoPositionMs.value = endPos
                         break
                     }
+                } else {
+                    _demoPositionMs.value = currentPos
+                    midiPlaybackScheduler.tick(currentPos)
                 }
                 delay(16)
             }
-            if (_transportMode.value == PlayerTransportMode.DEMO) {
-                stopDemo()
-            }
+            if (_transportMode.value == PlayerTransportMode.DEMO) stopDemo()
         }
     }
 
     fun stopDemo() {
-        demoJob?.cancel()
-        midiPlaybackScheduler.stop()
+        val snapshot = restoreSnapshot
+        restoreSnapshot = null
+        pianoAudioEngine.sustainPedal(false)
         pianoAudioEngine.allNotesOff()
-        _transportMode.value = if (_currentPracticeMode.value == PracticeMode.WAIT_FOR_NOTE) PlayerTransportMode.PRACTICE_WAIT else PlayerTransportMode.PRACTICE_RHYTHM
+        midiPlaybackScheduler.stop()
+        metronomeController.stop()
+        val restoredMode = snapshot?.practiceMode ?: _currentPracticeMode.value
+        _transportMode.value = if (restoredMode == PracticeMode.WAIT_FOR_NOTE) {
+            PlayerTransportMode.PRACTICE_WAIT
+        } else PlayerTransportMode.PRACTICE_RHYTHM
         updateSchedulerRoles()
-
-        val restorePos = _selectedSection.value?.startMs ?: 0L
-        practiceEngine.seekTo(restorePos)
-        if (_currentPracticeMode.value == PracticeMode.RHYTHM) {
-            midiPlaybackScheduler.play(restorePos)
+        val restorePosition = snapshot?.positionMs ?: (_selectedSection.value?.startMs ?: 0L)
+        practiceEngine.seekTo(restorePosition)
+        if (snapshot?.wasPaused != false) {
+            practiceEngine.pause()
+            _isToolbarVisible.value = true
+        } else {
+            practiceEngine.resume()
+            if (restoredMode == PracticeMode.RHYTHM) midiPlaybackScheduler.play(restorePosition)
+            if (snapshot.metronomeWasRunning && _isMetronomeSoundEnabled.value) {
+                metronomeController.start((_currentBpm.value * _speedMultiplier.value).toInt())
+            }
+            scheduleToolbarAutoHide()
         }
-        practiceEngine.resume()
     }
-
     private fun observeMidiInput() {
-        viewModelScope.launch {
+        midiNoteJob?.cancel()
+        midiNoteJob = viewModelScope.launch {
             midiInput.noteEvents.collect { event ->
                 if (event.isNoteOn && event.velocity > 0) {
                     _activeNotes.value = _activeNotes.value + event.note
@@ -580,6 +639,12 @@ class PracticePlayerViewModel(
                         pianoAudioEngine.noteOff(event.note)
                     }
                 }
+            }
+        }
+        midiControlJob?.cancel()
+        midiControlJob = viewModelScope.launch {
+            midiInput.controlEvents.collect { event ->
+                sustainRouter.onControlEvent(event)
             }
         }
     }
@@ -604,9 +669,11 @@ class PracticePlayerViewModel(
     }
 
     fun toggleAppSound() {
+        if (!PianoAudioCapabilityPolicy.canEnable(pianoAudioEngine.availability.value)) return
         val next = !_isAppSoundEnabled.value
         _isAppSoundEnabled.value = next
         if (!next) {
+            pianoAudioEngine.sustainPedal(false)
             pianoAudioEngine.allNotesOff()
         }
     }
@@ -627,6 +694,7 @@ class PracticePlayerViewModel(
     private fun applyPracticeSettings() {
         val notes = _exerciseNotes.value
         if (notes.isEmpty()) return
+        pianoAudioEngine.sustainPedal(false)
         pianoAudioEngine.allNotesOff()
         midiPlaybackScheduler.stop()
         val section = _selectedSection.value
@@ -641,7 +709,8 @@ class PracticePlayerViewModel(
             _isLooping.value,
             ((endMs - startMs).coerceAtLeast(0L) / 1000L).toInt()
         )
-        if (section != null) practiceEngine.setLoopRangeMs(startMs, endMs)
+        if (section != null && _isLooping.value) practiceEngine.setLoopRangeMs(startMs, endMs)
+        else if (!_isLooping.value) practiceEngine.clearLoop()
         practiceEngine.seekTo(startMs)
         if (_currentPracticeMode.value == PracticeMode.RHYTHM) midiPlaybackScheduler.play(startMs)
         scheduleToolbarAutoHide()
@@ -683,13 +752,21 @@ class PracticePlayerViewModel(
     }
 
     private fun scheduleToolbarAutoHide() {
-        toolbarAutoHideJob?.cancel()
-        if (!practiceEngine.state.value.isPaused && !_isCountInActive.value) {
-            toolbarAutoHideJob = viewModelScope.launch {
-                delay(3000L)
-                _isToolbarVisible.value = false
-            }
-        }
+        val running = !practiceEngine.state.value.isPaused && !_isCountInActive.value
+        toolbarAutoHideController.showAndSchedule(running)
+    }
+
+    fun onSettingsVisibilityChanged(visible: Boolean) {
+        if (visible) toolbarAutoHideController.cancelAndShow()
+        else if (!practiceEngine.state.value.isPaused) scheduleToolbarAutoHide()
+    }
+
+    fun seekRelativeToSection(relativePositionMs: Long) {
+        val section = _selectedSection.value
+        val absolute = if (section == null) relativePositionMs else PlayerTimeline.absolutePositionMs(
+            relativePositionMs, section.startMs, section.endMs
+        )
+        seekTo(absolute)
     }
 
     fun setPlaybackSpeed(multiplier: Float) {
@@ -706,6 +783,7 @@ class PracticePlayerViewModel(
 
     fun seekTo(targetMs: Long) {
         midiPlaybackScheduler.seekTo(targetMs)
+        pianoAudioEngine.sustainPedal(false)
         pianoAudioEngine.allNotesOff()
         practiceEngine.seekTo(targetMs)
     }
@@ -762,9 +840,16 @@ class PracticePlayerViewModel(
     }
 
     fun toggleLooping() {
-        val nextState = !_isLooping.value
-        _isLooping.value = nextState
-        practiceEngine.setLooping(nextState)
+        val enabled = !_isLooping.value
+        _isLooping.value = enabled
+        if (enabled) {
+            val section = _selectedSection.value
+            val start = _loopPointA.value ?: section?.startMs ?: 0L
+            val end = _loopPointB.value ?: section?.endMs ?: practiceEngine.state.value.songDurationMs
+            practiceEngine.setLoopRangeMs(start, end)
+        } else {
+            practiceEngine.clearLoop()
+        }
     }
 
     fun togglePause() {
@@ -781,10 +866,10 @@ class PracticePlayerViewModel(
             }
             scheduleToolbarAutoHide()
         } else {
-            toolbarAutoHideJob?.cancel()
-            _isToolbarVisible.value = true
+            toolbarAutoHideController.cancelAndShow()
             practiceEngine.pause()
             midiPlaybackScheduler.pause()
+            pianoAudioEngine.sustainPedal(false)
             pianoAudioEngine.allNotesOff()
             lastActiveMetronomeBpm = -1
             metronomeController.stop()
@@ -793,6 +878,7 @@ class PracticePlayerViewModel(
 
     fun restart() {
         midiPlaybackScheduler.stop()
+        pianoAudioEngine.sustainPedal(false)
         pianoAudioEngine.allNotesOff()
         val startPos = _selectedSection.value?.startMs ?: 0L
         seekTo(startPos)
@@ -802,6 +888,7 @@ class PracticePlayerViewModel(
         if (!practiceEngine.state.value.isPaused) {
             practiceEngine.pause()
             midiPlaybackScheduler.pause()
+            pianoAudioEngine.sustainPedal(false)
             pianoAudioEngine.allNotesOff()
             lastActiveMetronomeBpm = -1
             metronomeController.stop()
@@ -861,6 +948,7 @@ class PracticePlayerViewModel(
             countInJob?.cancel()
             demoJob?.cancel()
             midiPlaybackScheduler.stop()
+            pianoAudioEngine.sustainPedal(false)
             pianoAudioEngine.allNotesOff()
             val result = practiceEngine.stop()
             val session = result.session
@@ -917,7 +1005,8 @@ class PracticePlayerViewModel(
     }
 
     private fun observeEngineFinished() {
-        viewModelScope.launch {
+        engineFinishedJob?.cancel()
+        engineFinishedJob = viewModelScope.launch {
             practiceEngine.state.collect { state ->
                 if (state.isFinished && _transportMode.value != PlayerTransportMode.DEMO) {
                     metronomeController.stop()
@@ -962,12 +1051,23 @@ class PracticePlayerViewModel(
         super.onCleared()
         metronomeController.stop()
         lastActiveMetronomeBpm = -1
+        prepareAudioJob?.cancel()
         tickJob?.cancel()
         countInJob?.cancel()
         demoJob?.cancel()
-        toolbarAutoHideJob?.cancel()
+        presetsJob?.cancel()
+        loadNotesJob?.cancel()
+        midiNoteJob?.cancel()
+        midiControlJob?.cancel()
+        engineFinishedJob?.cancel()
+        toolbarAutoHideController.cancel()
         midiPlaybackScheduler.stop()
+        pianoAudioEngine.sustainPedal(false)
         pianoAudioEngine.allNotesOff()
+    }
+
+    fun cleanup() {
+        onCleared()
     }
 
     class Factory(

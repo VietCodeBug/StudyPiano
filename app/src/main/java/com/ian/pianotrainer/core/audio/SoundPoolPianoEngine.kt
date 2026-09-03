@@ -25,12 +25,15 @@ class SoundPoolPianoEngine(
 
     private val _state = MutableStateFlow(PianoAudioState())
     override val state: StateFlow<PianoAudioState> = _state.asStateFlow()
+    private val _availability = MutableStateFlow<PianoAudioAvailability>(PianoAudioAvailability.Loading)
+    override val availability: StateFlow<PianoAudioAvailability> = _availability.asStateFlow()
 
     private var soundPool: SoundPool? = null
     // anchorMidiNote -> soundId
     private val sampleSoundIds = mutableMapOf<Int, Int>()
-    // midiNote -> active streamId
-    private val activeStreams = mutableMapOf<Int, Int>()
+    private data class VoiceKey(val midiNote: Int, val channel: Int)
+    // FIFO voices preserve overlapping repeated pitches per channel/track.
+    private val activeStreams = mutableMapOf<VoiceKey, ArrayDeque<Int>>()
     // Set of streamIds held by sustain pedal
     private val sustainedStreamIds = mutableSetOf<Int>()
 
@@ -53,23 +56,38 @@ class SoundPoolPianoEngine(
                 .build()
 
             soundPool = pool
+            val pendingLoads = mutableSetOf<Int>()
+            var successfulLoads = 0
+            pool.setOnLoadCompleteListener { _, soundId, status ->
+                if (pendingLoads.remove(soundId) && status == 0) successfulLoads++
+                if (pendingLoads.isEmpty() && sampleSoundIds.isNotEmpty()) {
+                    val ready = successfulLoads == sampleSoundIds.size
+                    _state.value = _state.value.copy(isReady = ready, loadedSampleCount = successfulLoads)
+                    _availability.value = if (ready) PianoAudioAvailability.Ready(successfulLoads)
+                    else PianoAudioAvailability.Error("Không tải được đầy đủ bộ âm piano")
+                }
+            }
 
             // No synthesized fallback: silence is safer than misrepresenting generated tones as piano.
-            val loadedCount = loadBundledSamples(pool)
+            val loadedCount = loadBundledSamples(pool, pendingLoads)
 
             isPrepared = true
             _state.value = _state.value.copy(
-                isReady = loadedCount > 0,
+                isReady = false,
                 loadedSampleCount = loadedCount
             )
-            Log.i(TAG, "PianoAudioEngine prepared with $loadedCount anchor samples.")
+            _availability.value = if (loadedCount == 0) PianoAudioAvailability.Unavailable(
+                "Chưa cài bộ âm piano; chế độ này chỉ hiển thị nốt."
+            ) else PianoAudioAvailability.Loading
+            Log.i(TAG, "PianoAudioEngine prepared with $loadedCount pending samples.")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize SoundPoolPianoEngine", e)
             _state.value = _state.value.copy(isReady = false)
+            _availability.value = PianoAudioAvailability.Error(e.message ?: "Không thể khởi tạo âm thanh piano")
         }
     }
 
-    private fun loadBundledSamples(pool: SoundPool): Int {
+    private fun loadBundledSamples(pool: SoundPool, pendingLoads: MutableSet<Int>): Int {
         var count = 0
         for (anchorMidi in ANCHOR_MIDI_NOTES) {
             val assetName = "piano_samples/piano_${anchorMidi}_medium.ogg"
@@ -78,6 +96,7 @@ class SoundPoolPianoEngine(
                     val soundId = pool.load(afd, 1)
                     if (soundId > 0) {
                         sampleSoundIds[anchorMidi] = soundId
+                        pendingLoads.add(soundId)
                         count++
                     }
                 }
@@ -107,33 +126,21 @@ class SoundPoolPianoEngine(
         val normalizedVelocity = (velocity / 127.0).coerceIn(0.0, 1.0)
         val volumeGain = (normalizedVelocity.pow(1.35) * masterVolume).toFloat().coerceIn(0.01f, 1.0f)
 
-        // Stop any previously playing instance of the same note to prevent phase clashing
-        activeStreams[midiNote]?.let { prevStreamId ->
-            try { pool.stop(prevStreamId) } catch (e: Exception) { }
-        }
-
-        // 4. Play through SoundPool with high priority
         val streamId = pool.play(soundId, volumeGain, volumeGain, 1, 0, rate)
         if (streamId > 0) {
-            activeStreams[midiNote] = streamId
-            _state.value = _state.value.copy(activeVoiceCount = activeStreams.size)
+            activeStreams.getOrPut(VoiceKey(midiNote, channel)) { ArrayDeque() }.addLast(streamId)
+            _state.value = _state.value.copy(activeVoiceCount = activeStreams.values.sumOf { it.size })
         }
     }
 
     override fun noteOff(midiNote: Int, channel: Int) {
         val pool = soundPool ?: return
-        val streamId = activeStreams.remove(midiNote) ?: return
-
-        if (isSustainDown) {
-            // Keep sound ringing while sustain pedal is held
-            sustainedStreamIds.add(streamId)
-        } else {
-            // Stop with short smooth decay
-            try {
-                pool.stop(streamId)
-            } catch (e: Exception) { }
-        }
-        _state.value = _state.value.copy(activeVoiceCount = activeStreams.size)
+        val key = VoiceKey(midiNote, channel)
+        val voices = activeStreams[key] ?: return
+        val streamId = voices.removeFirstOrNull() ?: return
+        if (voices.isEmpty()) activeStreams.remove(key)
+        if (isSustainDown) sustainedStreamIds.add(streamId) else try { pool.stop(streamId) } catch (_: Exception) { }
+        _state.value = _state.value.copy(activeVoiceCount = activeStreams.values.sumOf { it.size })
     }
 
     override fun sustainPedal(isDown: Boolean) {
@@ -154,8 +161,8 @@ class SoundPoolPianoEngine(
 
     override fun allNotesOff() {
         val pool = soundPool ?: return
-        for ((_, streamId) in activeStreams) {
-            try { pool.stop(streamId) } catch (e: Exception) { }
+        for (voices in activeStreams.values) for (streamId in voices) {
+            try { pool.stop(streamId) } catch (_: Exception) { }
         }
         activeStreams.clear()
 
@@ -179,6 +186,7 @@ class SoundPoolPianoEngine(
         sampleSoundIds.clear()
         isPrepared = false
         _state.value = PianoAudioState()
+        _availability.value = PianoAudioAvailability.Loading
     }
 
     private fun findClosestAnchor(midiNote: Int): Int {

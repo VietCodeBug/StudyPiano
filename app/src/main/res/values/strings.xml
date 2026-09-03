@@ -215,4 +215,12 @@
     <string name="state_error">Đã xảy ra lỗi khi tải dữ liệu</string>
     <string name="state_retry">Thử lại</string>
     <string name="state_empty">Chưa có dữ liệu</string>
-</resources>
+    <string name="song_prep_duration_difficulty">Thời lượng: %1$s · Độ khó: %2$s</string>
+    <string name="song_prep_mode">Chế độ luyện tập</string>
+    <string name="song_prep_wait">Chờ đúng nốt (Wait)</string>
+    <string name="song_prep_rhythm">Chơi theo nhịp (Rhythm)</string>
+    <string name="song_prep_tempo">Tốc độ chơi (BPM)</string>
+    <string name="song_prep_tracks">Cấu hình track và phân tay (%1$d track)</string>
+    <string name="song_prep_loading">Đang phân tích track MIDI…</string>
+    <string name="song_prep_start">Bắt đầu luyện bài</string>
+    <string name="song_prep_rename">Đổi tên bài</string></resources>

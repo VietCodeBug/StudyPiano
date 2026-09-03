@@ -3,6 +3,7 @@ package com.ian.pianotrainer.core.audio
 import com.ian.pianotrainer.domain.model.ExerciseNote
 import com.ian.pianotrainer.domain.model.HandMode
 import com.ian.pianotrainer.domain.model.SongPlaybackData
+import java.util.PriorityQueue
 
 interface MidiPlaybackScheduler {
     fun load(playbackData: SongPlaybackData)
@@ -20,132 +21,98 @@ interface MidiPlaybackScheduler {
 class DefaultMidiPlaybackScheduler(
     private val audioEngine: PianoAudioEngine
 ) : MidiPlaybackScheduler {
+    private data class ActiveVoice(val noteIndex: Int, val offTimeMs: Long)
 
     private var allNotes: List<ExerciseNote> = emptyList()
     private var isPlaying = false
     private var isDemoMode = false
     private var speedMultiplier = 1.0f
-
-    // Track index -> PlaybackRole
+    private var nextNoteIndex = 0
     private val trackRoles = mutableMapOf<Int, PlaybackRole>()
-    // HandMode -> PlaybackRole
     private val handRoles = mutableMapOf<HandMode, PlaybackRole>()
-
-    // Track which notes have fired NoteOn
-    private val triggeredNoteIndices = mutableSetOf<Int>()
-    // Active notes waiting for NoteOff: noteIndex -> offTimeMs
-    private val activeNoteOffs = mutableMapOf<Int, Long>()
+    private val activeVoices = PriorityQueue<ActiveVoice>(compareBy { it.offTimeMs })
 
     override fun load(playbackData: SongPlaybackData) {
         stop()
-        allNotes = playbackData.notes.sortedWith(compareBy({ it.startMs }, { it.midiNote }))
+        allNotes = playbackData.notes.sortedWith(compareBy({ it.startMs }, { it.midiNote }, { it.trackIndex }))
         trackRoles.clear()
         handRoles.clear()
-        // Default: Demo mode off (both hands default to PRACTICE unless specified)
         handRoles[HandMode.RIGHT] = PlaybackRole.PRACTICE
         handRoles[HandMode.LEFT] = PlaybackRole.PRACTICE
         handRoles[HandMode.BOTH] = PlaybackRole.PRACTICE
     }
 
     override fun play(fromPositionMs: Long) {
-        isPlaying = true
         seekTo(fromPositionMs)
+        isPlaying = true
     }
 
     override fun pause() {
         isPlaying = false
-        audioEngine.allNotesOff()
-        activeNoteOffs.clear()
+        resetVoices()
     }
 
     override fun seekTo(positionMs: Long) {
-        audioEngine.allNotesOff()
-        activeNoteOffs.clear()
-        triggeredNoteIndices.clear()
+        resetVoices()
+        nextNoteIndex = lowerBound(positionMs.coerceAtLeast(0L))
+    }
 
-        // Mark any past notes as triggered so they don't fire retroactively
-        for (i in allNotes.indices) {
-            if (allNotes[i].startMs < positionMs) {
-                triggeredNoteIndices.add(i)
-            }
+    private fun lowerBound(positionMs: Long): Int {
+        var low = 0
+        var high = allNotes.size
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (allNotes[mid].startMs < positionMs) low = mid + 1 else high = mid
         }
+        return low
     }
 
     override fun setSpeed(multiplier: Float) {
         speedMultiplier = multiplier.coerceIn(0.25f, 2.0f)
     }
 
-    override fun setTrackRole(trackIndex: Int, role: PlaybackRole) {
-        trackRoles[trackIndex] = role
-    }
-
-    override fun setHandRole(hand: HandMode, role: PlaybackRole) {
-        handRoles[hand] = role
-    }
-
-    override fun setDemoMode(isDemo: Boolean) {
-        isDemoMode = isDemo
-    }
+    override fun setTrackRole(trackIndex: Int, role: PlaybackRole) { trackRoles[trackIndex] = role }
+    override fun setHandRole(hand: HandMode, role: PlaybackRole) { handRoles[hand] = role }
+    override fun setDemoMode(isDemo: Boolean) { isDemoMode = isDemo }
 
     override fun tick(currentPositionMs: Long) {
         if (!isPlaying) return
-
-        // 1. Process NoteOffs for notes that reached their end
-        val endedNotes = mutableListOf<Int>()
-        for ((idx, offTime) in activeNoteOffs) {
-            if (currentPositionMs >= offTime) {
-                val note = allNotes.getOrNull(idx)
-                if (note != null) {
-                    audioEngine.noteOff(note.midiNote, note.trackIndex)
-                }
-                endedNotes.add(idx)
-            }
-        }
-        for (idx in endedNotes) {
-            activeNoteOffs.remove(idx)
-        }
-
-        // 2. Trigger new NoteOns within timing window [currentPositionMs - 50ms, currentPositionMs]
-        for (i in allNotes.indices) {
-            val note = allNotes[i]
-            if (note.startMs > currentPositionMs) {
-                // Notes are sorted by startMs, so we can break early
+        while (activeVoices.isNotEmpty()) {
+            val top = activeVoices.peek() ?: break
+            if (top.offTimeMs <= currentPositionMs) {
+                val voice = activeVoices.poll() ?: break
+                val note = allNotes[voice.noteIndex]
+                audioEngine.noteOff(note.midiNote, note.trackIndex)
+            } else {
                 break
             }
-            if (note.startMs <= currentPositionMs && !triggeredNoteIndices.contains(i)) {
-                triggeredNoteIndices.add(i)
-
-                if (shouldPlayNote(note)) {
-                    audioEngine.noteOn(note.midiNote, note.velocity, note.trackIndex)
-                    activeNoteOffs[i] = note.startMs + note.durationMs
-                }
+        }
+        while (nextNoteIndex < allNotes.size) {
+            val note = allNotes[nextNoteIndex]
+            if (note.startMs > currentPositionMs) break
+            val index = nextNoteIndex++
+            if (shouldPlayNote(note)) {
+                audioEngine.noteOn(note.midiNote, note.velocity, note.trackIndex)
+                activeVoices.add(ActiveVoice(index, note.startMs + note.durationMs))
             }
         }
     }
 
     private fun shouldPlayNote(note: ExerciseNote): Boolean {
         if (isDemoMode) return true
+        val role = trackRoles[note.trackIndex] ?: handRoles[note.hand] ?: PlaybackRole.PRACTICE
+        return role == PlaybackRole.DEMO || role == PlaybackRole.ACCOMPANIMENT
+    }
 
-        // Check specific track role first
-        trackRoles[note.trackIndex]?.let { role ->
-            return when (role) {
-                PlaybackRole.DEMO, PlaybackRole.ACCOMPANIMENT -> true
-                PlaybackRole.PRACTICE, PlaybackRole.MUTED -> false
-            }
-        }
-
-        // Check hand role
-        val handRole = handRoles[note.hand] ?: PlaybackRole.PRACTICE
-        return when (handRole) {
-            PlaybackRole.DEMO, PlaybackRole.ACCOMPANIMENT -> true
-            PlaybackRole.PRACTICE, PlaybackRole.MUTED -> false
-        }
+    private fun resetVoices() {
+        audioEngine.sustainPedal(false)
+        audioEngine.allNotesOff()
+        activeVoices.clear()
     }
 
     override fun stop() {
         isPlaying = false
-        audioEngine.allNotesOff()
-        triggeredNoteIndices.clear()
-        activeNoteOffs.clear()
+        resetVoices()
+        nextNoteIndex = 0
     }
 }

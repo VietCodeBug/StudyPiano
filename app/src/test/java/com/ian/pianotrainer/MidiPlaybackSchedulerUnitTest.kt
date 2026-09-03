@@ -3,6 +3,7 @@ package com.ian.pianotrainer
 import com.ian.pianotrainer.core.audio.DefaultMidiPlaybackScheduler
 import com.ian.pianotrainer.core.audio.PianoAudioEngine
 import com.ian.pianotrainer.core.audio.PianoAudioState
+import com.ian.pianotrainer.core.audio.PianoAudioAvailability
 import com.ian.pianotrainer.core.audio.PlaybackRole
 import com.ian.pianotrainer.domain.model.ExerciseNote
 import com.ian.pianotrainer.domain.model.HandMode
@@ -24,6 +25,7 @@ class MidiPlaybackSchedulerUnitTest {
         var allNotesOffCount = 0
 
         override val state: StateFlow<PianoAudioState> = MutableStateFlow(PianoAudioState(isReady = true))
+        override val availability: StateFlow<PianoAudioAvailability> = MutableStateFlow(PianoAudioAvailability.Ready(1))
         override suspend fun prepare() {}
         override fun noteOn(midiNote: Int, velocity: Int, channel: Int) {
             playedNotes.add(Triple(midiNote, velocity, channel))
@@ -147,4 +149,28 @@ class MidiPlaybackSchedulerUnitTest {
         scheduler.tick(500L)
         assertEquals(0, mockEngine.playedNotes.size)
     }
-}
+
+    @Test
+    fun `loop seek resets index and replays loop start without old notes`() {
+        scheduler.load(createSamplePlaybackData())
+        scheduler.setDemoMode(true)
+        scheduler.play(500L)
+        scheduler.tick(500L)
+        assertEquals(listOf(64), mockEngine.playedNotes.map { it.first })
+        scheduler.play(500L)
+        scheduler.tick(500L)
+        assertEquals(listOf(64), mockEngine.playedNotes.map { it.first })
+    }
+
+    @Test
+    fun `repeated same pitch notes each receive note on and note off`() {
+        val song = ImportedSong(id="repeat", displayName="Repeat", originalFileName="repeat.mid")
+        val notes = listOf(
+            ExerciseNote(60,startMs=0,durationMs=300,hand=HandMode.LEFT,trackIndex=1),
+            ExerciseNote(60,startMs=100,durationMs=300,hand=HandMode.LEFT,trackIndex=1)
+        )
+        scheduler.load(SongPlaybackData(song,notes,emptyList(),emptyList(),emptyList()))
+        scheduler.setDemoMode(true); scheduler.play(0); scheduler.tick(0); scheduler.tick(100); scheduler.tick(400)
+        assertEquals(2, mockEngine.playedNotes.count { it.first == 60 })
+        assertEquals(2, mockEngine.stoppedNotes.count { it.first == 60 })
+    }}

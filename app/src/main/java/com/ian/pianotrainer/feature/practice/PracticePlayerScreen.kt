@@ -90,6 +90,7 @@ import com.ian.pianotrainer.core.ui.ForceLandscapeWhileVisible
 import com.ian.pianotrainer.domain.model.DisplayMode
 import com.ian.pianotrainer.domain.model.HandMode
 import com.ian.pianotrainer.domain.model.KeyboardRangeMode
+import com.ian.pianotrainer.core.audio.PianoAudioAvailability
 import com.ian.pianotrainer.domain.model.LearningSection
 import com.ian.pianotrainer.domain.model.NoteDisplaySize
 import com.ian.pianotrainer.domain.model.PlayerTransportMode
@@ -142,6 +143,10 @@ fun PracticePlayerScreen(
     }
 
 
+    LaunchedEffect(showSettingsSheet) {
+        viewModel.onSettingsVisibilityChanged(showSettingsSheet)
+    }
+
     LaunchedEffect(uiState.transportMode) {
         if (uiState.transportMode == PlayerTransportMode.DEMO) {
             showDemoIndicator = true
@@ -174,7 +179,7 @@ fun PracticePlayerScreen(
             onPracticeModeChange = viewModel::setPracticeMode,
             onSpeedChange = viewModel::setPlaybackSpeed,
             onBpmChange = viewModel::setBpm,
-            onSeekChange = viewModel::seekTo,
+            onSeekChange = viewModel::seekRelativeToSection,
             onLoopPointA = viewModel::setLoopPointA,
             onLoopPointB = viewModel::setLoopPointB,
             onClearLoop = viewModel::clearLoop,
@@ -212,6 +217,7 @@ fun PracticePlayerScreen(
                     totalDurationMs = uiState.selectedSection?.endMs ?: uiState.engineState.songDurationMs,
                     isPaused = uiState.engineState.isPaused,
                     isAppSoundEnabled = uiState.isAppSoundEnabled,
+                    audioAvailability = uiState.pianoAudioAvailability,
                     onToggleDemoMode = viewModel::toggleDemoMode,
                     onPauseToggle = viewModel::togglePause,
                     onRestart = viewModel::restart,
@@ -264,7 +270,7 @@ fun PracticePlayerScreen(
                         shape = RoundedCornerShape(16.dp),
                         color = Color(0xDD0284C7),
                         modifier = Modifier
-                            .align(Alignment.TopCenter)
+                            .align(Alignment.TopStart)
                             .padding(top = 8.dp)
                     ) {
                         Row(
@@ -392,6 +398,7 @@ private fun PracticeCompactTopBar(
     totalDurationMs: Long,
     isPaused: Boolean,
     isAppSoundEnabled: Boolean,
+    audioAvailability: PianoAudioAvailability,
     onToggleDemoMode: () -> Unit,
     onPauseToggle: () -> Unit,
     onRestart: () -> Unit,
@@ -487,7 +494,7 @@ private fun PracticeCompactTopBar(
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = if (transportMode == PlayerTransportMode.DEMO) "Dừng mẫu" else "Nghe mẫu",
+                            text = if (transportMode == PlayerTransportMode.DEMO) "Dừng mẫu" else if (audioAvailability is PianoAudioAvailability.Ready) "Nghe mẫu" else "Xem chuyển động mẫu",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = if (transportMode == PlayerTransportMode.DEMO) Color.White else PianoTextSecondary
                         )
@@ -612,20 +619,22 @@ fun PracticeSettingsBottomSheet(
                 }
             }
 
-            // 2. Timeline Seek Slider
-            val maxDur = (uiState.selectedSection?.endMs ?: uiState.engineState.songDurationMs).coerceAtLeast(1000L).toFloat()
-            val minDur = (uiState.selectedSection?.startMs ?: 0L).toFloat()
+            // 2. Section-relative timeline
+            val sectionStart = uiState.selectedSection?.startMs ?: 0L
+            val sectionEnd = uiState.selectedSection?.endMs ?: uiState.engineState.songDurationMs
+            val relativeDuration = PlayerTimeline.durationMs(sectionStart, sectionEnd).coerceAtLeast(1L)
+            val relativePosition = PlayerTimeline.relativePositionMs(
+                uiState.engineState.currentPositionMs, sectionStart, sectionEnd
+            )
             Column {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Tua bài nhạc", style = MaterialTheme.typography.bodySmall, color = PianoTextSecondary)
-                    val curSec = uiState.engineState.currentPositionMs / 1000
-                    val totSec = maxDur.toLong() / 1000
-                    Text("%02d:%02d / %02d:%02d".format(curSec / 60, curSec % 60, totSec / 60, totSec % 60), style = MaterialTheme.typography.labelSmall, color = PianoPrimary)
+                    Text("${PlayerTimeline.format(relativePosition)} / ${PlayerTimeline.format(relativeDuration)}", style = MaterialTheme.typography.labelSmall, color = PianoPrimary)
                 }
                 Slider(
-                    value = uiState.engineState.currentPositionMs.toFloat().coerceIn(minDur, maxDur),
+                    value = relativePosition.toFloat(),
                     onValueChange = { onSeekChange(it.toLong()) },
-                    valueRange = minDur..maxDur,
+                    valueRange = 0f..relativeDuration.toFloat(),
                     colors = SliderDefaults.colors(thumbColor = PianoPrimary, activeTrackColor = PianoPrimary, inactiveTrackColor = PianoOutline),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -760,8 +769,16 @@ fun PracticeSettingsBottomSheet(
                     Text("Âm thanh Piano trong App", style = MaterialTheme.typography.bodyMedium, color = PianoTextPrimary)
                     Switch(
                         checked = uiState.isAppSoundEnabled,
+                        enabled = uiState.pianoAudioAvailability is PianoAudioAvailability.Ready,
                         onCheckedChange = { onToggleAppSound() },
                         colors = SwitchDefaults.colors(checkedThumbColor = PianoPrimary, checkedTrackColor = PianoPrimaryContainer)
+                    )
+                }
+                if (uiState.pianoAudioAvailability is PianoAudioAvailability.Unavailable) {
+                    Text(
+                        text = uiState.pianoAudioAvailability.reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PianoTextSecondary
                     )
                 }
 

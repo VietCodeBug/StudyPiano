@@ -65,7 +65,7 @@ import com.ian.pianotrainer.domain.model.HandMode
 @Composable
 fun PracticeScreen(
     viewModel: PracticeViewModel,
-    onStartPractice: (title: String, sourceType: String, sourceId: String, handMode: String, displayMode: String, bpm: Int) -> Unit,
+    onStartPractice: (title: String, sourceType: String, sourceId: String, handMode: String, practiceMode: String, displayMode: String, bpm: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -91,8 +91,9 @@ fun PracticeScreen(
                                     "EXERCISE",
                                     firstExercise.id,
                                     firstExercise.handMode.name,
+                                    uiState.selectedMode.name,
                                     uiState.selectedDisplayMode.name,
-                                    firstExercise.recommendedBpm
+                                    uiState.bpm
                                 )
                             } else {
                                 onStartPractice(
@@ -100,6 +101,7 @@ fun PracticeScreen(
                                     "CUSTOM_PRACTICE",
                                     "custom_drill",
                                     uiState.selectedHand.name,
+                                    uiState.selectedMode.name,
                                     uiState.selectedDisplayMode.name,
                                     uiState.bpm
                                 )
@@ -223,11 +225,12 @@ fun PracticeScreen(
                 ) {
                     val categories = listOf(
                         "ALL" to "Tất cả",
-                        "HANON" to "Hanon độc lập ngón",
-                        "ARPEGGIO" to "Hợp âm rải (Arpeggio)",
-                        "SCALE" to "Âm giai (Scale)",
-                        "OCTAVE" to "Quãng 8 (Octave)",
-                        "CHORD" to "Hợp âm & Chuyển ngón"
+                        "5_FINGERS" to "5 ngón",
+                        "INTERVALS" to "Quãng",
+                        "COORDINATION" to "Phối hợp hai tay",
+                        "SCALES" to "Âm giai",
+                        "CHORDS" to "Hợp âm",
+                        "RHYTHM" to "Nhịp điệu"
                     )
                     categories.forEach { (catKey, catLabel) ->
                         FilterChip(
@@ -253,8 +256,9 @@ fun PracticeScreen(
                             "EXERCISE",
                             exercise.id,
                             exercise.handMode.name,
+                            uiState.selectedMode.name,
                             uiState.selectedDisplayMode.name,
-                            exercise.recommendedBpm
+                            uiState.bpm
                         )
                     }
                 )

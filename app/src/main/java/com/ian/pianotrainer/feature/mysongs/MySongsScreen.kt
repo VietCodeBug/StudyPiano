@@ -1,5 +1,6 @@
 package com.ian.pianotrainer.feature.mysongs
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -144,6 +145,11 @@ fun MySongsScreen(
 
     LaunchedEffect(uiState.feedbackMessage) {
         uiState.feedbackMessage?.let { msg ->
+            if (showDownloadDialog && msg.startsWith("Tải thành công")) {
+                showDownloadDialog = false
+                downloadUrlText = ""
+                downloadTitleText = ""
+            }
             snackbarHostState.showSnackbar(msg)
             viewModel.clearFeedback()
         }
@@ -171,15 +177,15 @@ fun MySongsScreen(
         )
     }
 
-    // Download Song from OnlineSequencer / Link Dialog
+    // Direct download plus a truthful fallback for OnlineSequencer's browser-only export.
     if (showDownloadDialog) {
         AlertDialog(
-            onDismissRequest = { showDownloadDialog = false },
+            onDismissRequest = { if (!uiState.isImporting) showDownloadDialog = false },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, tint = PianoPrimary)
                     Text(
-                        text = "Tải bài nhạc Online",
+                        text = "Thêm nhạc từ Internet",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = PianoTextPrimary
                     )
@@ -188,7 +194,7 @@ fun MySongsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "Nhập mã ID hoặc liên kết OnlineSequencer (hoặc URL tệp .mid/.pianopack trực tiếp):",
+                        text = "Dán liên kết tải trực tiếp tới tệp .mid, .midi, .zip hoặc .pianopack:",
                         style = MaterialTheme.typography.bodySmall,
                         color = PianoTextSecondary
                     )
@@ -196,8 +202,9 @@ fun MySongsScreen(
                     OutlinedTextField(
                         value = downloadUrlText,
                         onValueChange = { downloadUrlText = it },
-                        label = { Text("Mã ID hoặc URL bài nhạc") },
-                        placeholder = { Text("Ví dụ: 3134103 hoặc https://...") },
+                        enabled = !uiState.isImporting,
+                        label = { Text("URL tải trực tiếp") },
+                        placeholder = { Text("https://example.com/song.mid") },
                         singleLine = true,
                         leadingIcon = {
                             Icon(imageVector = Icons.Default.Link, contentDescription = null, tint = PianoPrimary)
@@ -214,6 +221,7 @@ fun MySongsScreen(
                     OutlinedTextField(
                         value = downloadTitleText,
                         onValueChange = { downloadTitleText = it },
+                        enabled = !uiState.isImporting,
                         label = { Text("Tên bài hiển thị (tùy chọn)") },
                         placeholder = { Text("Để trống sẽ tự động lấy tên gốc") },
                         singleLine = true,
@@ -227,7 +235,7 @@ fun MySongsScreen(
                     )
 
                     Text(
-                        text = "Hỗ trợ nhập Sequence ID hoặc link tải tệp trực tiếp (.mid / .zip / .pianopack).",
+                        text = "OnlineSequencer hiện chỉ xuất MIDI trong trình duyệt: mở bài, chọn Export MIDI, sau đó quay lại chọn tệp đã tải.",
                         style = MaterialTheme.typography.bodySmall,
                         color = PianoTextSecondary
                     )
@@ -241,19 +249,59 @@ fun MySongsScreen(
                                 urlOrId = downloadUrlText,
                                 customTitle = downloadTitleText.takeIf { it.isNotBlank() }
                             )
-                            showDownloadDialog = false
-                            downloadUrlText = ""
-                            downloadTitleText = ""
                         }
                     },
+                    enabled = downloadUrlText.isNotBlank() && !uiState.isImporting,
                     modifier = Modifier.testTag("confirm_download_button")
                 ) {
-                    Text("Tải về & Thêm", color = PianoPrimary, fontWeight = FontWeight.Bold)
+                    if (uiState.isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = PianoPrimary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Đang tải…", color = PianoPrimary, fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("Tải và thêm", color = PianoPrimary, fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDownloadDialog = false }) {
-                    Text("Hủy", color = PianoTextSecondary)
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(
+                        onClick = {
+                            val sequenceId = Regex("\\d+").find(downloadUrlText)?.value
+                            val pageUrl = if (sequenceId != null) {
+                                "https://onlinesequencer.net/$sequenceId"
+                            } else {
+                                "https://onlinesequencer.net/"
+                            }
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl)))
+                            }
+                        },
+                        enabled = !uiState.isImporting
+                    ) {
+                        Text("Mở OnlineSequencer", color = PianoPrimary)
+                    }
+                    TextButton(
+                        onClick = {
+                            showDownloadDialog = false
+                            filePickerLauncher.launch(
+                                arrayOf("audio/midi", "audio/x-midi", "application/zip", "application/octet-stream", "*/*")
+                            )
+                        },
+                        enabled = !uiState.isImporting
+                    ) {
+                        Text("Chọn tệp đã tải", color = PianoPrimary)
+                    }
+                    TextButton(
+                        onClick = { showDownloadDialog = false },
+                        enabled = !uiState.isImporting
+                    ) {
+                        Text("Hủy", color = PianoTextSecondary)
+                    }
                 }
             },
             containerColor = PianoSurface,

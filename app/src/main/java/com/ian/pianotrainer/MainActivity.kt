@@ -159,13 +159,14 @@ class MainActivity : ComponentActivity() {
                             )
                             PracticeScreen(
                                 viewModel = viewModel,
-                                onStartPractice = { title, sourceType, sourceId, handMode, displayMode, bpm ->
+                                onStartPractice = { title, sourceType, sourceId, handMode, practiceMode, displayMode, bpm ->
                                     navController.navigate(
                                         Screen.PracticePlayer.createRoute(
                                             title = title,
                                             sourceType = sourceType,
                                             sourceId = sourceId,
                                             handMode = handMode,
+                                            practiceMode = practiceMode,
                                             displayMode = displayMode,
                                             bpm = bpm
                                         )
@@ -319,7 +320,9 @@ class MainActivity : ComponentActivity() {
                                     initialHand = initialHand,
                                     initialBpm = initialBpm,
                                     initialPracticeMode = initialPracticeMode,
-                                    practiceEngine = appContainer.practiceEngine,
+                                    // A practice engine owns one attempt only. Reusing the application-scoped
+                                    // engine leaked the previous attempt's finished state into this screen.
+                                    practiceEngine = appContainer.createPracticeEngine(),
                                     midiInput = appContainer.midiInput,
                                     metronomeController = appContainer.metronomeController,
                                     curriculumRepository = appContainer.curriculumRepository,

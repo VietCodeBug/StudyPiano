@@ -729,7 +729,7 @@ class RealPracticeEngine(
 
         val evaluatedTotal = (correct + wrong + missed).coerceAtLeast(1)
         val accuracy = if (correct + wrong + missed == 0) {
-            100f
+            0f
         } else {
             ((correct.toFloat() / evaluatedTotal) * 100f).coerceIn(0f, 100f)
         }

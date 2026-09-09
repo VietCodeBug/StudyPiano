@@ -39,5 +39,20 @@ class OnlineSongDownloaderUnitTest {
     @Test
     fun `extractSequenceId returns null for non-sequencer string`() {
         assertNull(downloader.extractSequenceId("invalid_url_without_digits"))
+        assertNull(downloader.extractSequenceId("https://example.com/song-3134103.mid"))
+        assertNull(downloader.extractSequenceId("https://example.com/3134103"))
+    }
+
+    @Test
+    fun `direct link normalization accepts web URLs and converts github blob URLs`() {
+        assertEquals(
+            "https://example.com/music/song.mid",
+            downloader.normalizeDirectUrl("https://example.com/music/song.mid")
+        )
+        assertEquals(
+            "https://raw.githubusercontent.com/user/repo/main/music/song.mid",
+            downloader.normalizeDirectUrl("https://github.com/user/repo/blob/main/music/song.mid")
+        )
+        assertNull(downloader.normalizeDirectUrl("file:///storage/song.mid"))
     }
 }

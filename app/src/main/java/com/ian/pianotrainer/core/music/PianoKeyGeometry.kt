@@ -20,6 +20,25 @@ data class PianoRangeResult(
 
 object PianoGeometryCalculator {
 
+    /** Resolves a touch position to a key, prioritizing raised black keys. */
+    fun findNoteAt(
+        geometries: Collection<PianoKeyGeometry>,
+        x: Float,
+        y: Float,
+        keyboardHeight: Float,
+        blackKeyHeight: Float
+    ): Int? {
+        if (x < 0f || y < 0f || y > keyboardHeight) return null
+        if (y <= blackKeyHeight) {
+            geometries.firstOrNull { key ->
+                key.isBlack && x >= key.left && x < key.right
+            }?.let { return it.midiNote }
+        }
+        return geometries.firstOrNull { key ->
+            !key.isBlack && x >= key.left && x < key.right
+        }?.midiNote
+    }
+
     fun calculateRangeGeometries(
         startMidiNote: Int,
         endMidiNote: Int,

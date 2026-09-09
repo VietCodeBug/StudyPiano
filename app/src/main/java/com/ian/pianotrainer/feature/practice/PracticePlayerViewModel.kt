@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ian.pianotrainer.core.music.SectionSlicer
+import com.ian.pianotrainer.core.music.PracticeSequenceBuilder
 import com.ian.pianotrainer.core.music.PracticeClock
 import com.ian.pianotrainer.core.music.SystemPracticeClock
 import com.ian.pianotrainer.core.audio.PianoAudioAvailability
@@ -142,7 +143,7 @@ class PracticePlayerViewModel(
     private val _isAppSoundEnabled = MutableStateFlow(false)
     private val _sections = MutableStateFlow<List<LearningSection>>(emptyList())
     private val _selectedSection = MutableStateFlow<LearningSection?>(null)
-    private val _showNoteNames = MutableStateFlow(false)
+    private val _showNoteNames = MutableStateFlow(sourceType != "SONG")
     private val _enableVirtualKeyInteraction = MutableStateFlow(false)
     private val _demoPositionMs = MutableStateFlow(0L)
 
@@ -160,6 +161,8 @@ class PracticePlayerViewModel(
         ToolbarAutoHideController(viewModelScope) { _isToolbarVisible.value = it }
     }
     private var restoreSnapshot: PracticeRestoreSnapshot? = null
+    private var isCurrentAttemptReady = false
+    private var hasFinishedCurrentAttempt = false
     private val sustainRouter = MidiSustainRouter(pianoAudioEngine)
 
     private val _navigateToResult = MutableSharedFlow<String>(extraBufferCapacity = 1)
@@ -402,6 +405,8 @@ class PracticePlayerViewModel(
     private fun loadNotesAndStart() {
         loadNotesJob?.cancel()
         loadNotesJob = viewModelScope.launch {
+            isCurrentAttemptReady = false
+            hasFinishedCurrentAttempt = false
             _isLoading.value = true
             _activeNotes.value = emptySet()
             val playbackData = if (sourceType == "SONG" && sourceId.isNotBlank()) {
@@ -417,8 +422,9 @@ class PracticePlayerViewModel(
 
             val rawNotes = loadRawNotesForSource(sourceType, sourceId, _currentHandMode.value, playbackData)
             _allSourceNotes.value = rawNotes
-            val baseBpm = playbackData?.song?.defaultBpm ?: _currentBpm.value
-            _currentBpm.value = baseBpm
+            // Keep the tempo selected on the preparation screen. Previously every imported
+            // song silently replaced it with the file's default tempo on entry.
+            val baseBpm = _currentBpm.value
 
             // Compute Sections with SectionSlicer
             val slicedSections = SectionSlicer.sliceSong(
@@ -466,6 +472,7 @@ class PracticePlayerViewModel(
                     isLoopingEnabled = _isLooping.value,
                     targetDurationSeconds = _targetDurationSeconds.value
                 )
+                isCurrentAttemptReady = true
 
                 if (initialSec != null) {
                     _loopPointA.value = initialSec.startMs
@@ -502,12 +509,9 @@ class PracticePlayerViewModel(
         }
         _exerciseNotes.value = filtered
         if (filtered.isNotEmpty()) {
-            val startMs = section?.startMs ?: 0L
-            val endMs = section?.endMs ?: filtered.maxOf { it.startMs + it.durationMs }
-            _loopPointA.value = startMs
-            _loopPointB.value = endMs
-            if (_isLooping.value) practiceEngine.setLoopRangeMs(startMs, endMs) else practiceEngine.clearLoop()
-            seekTo(startMs)
+            _loopPointA.value = section?.startMs
+            _loopPointB.value = section?.endMs
+            applyPracticeSettings()
         }
     }
 
@@ -709,6 +713,8 @@ class PracticePlayerViewModel(
             _isLooping.value,
             ((endMs - startMs).coerceAtLeast(0L) / 1000L).toInt()
         )
+        isCurrentAttemptReady = true
+        hasFinishedCurrentAttempt = false
         if (section != null && _isLooping.value) practiceEngine.setLoopRangeMs(startMs, endMs)
         else if (!_isLooping.value) practiceEngine.clearLoop()
         practiceEngine.seekTo(startMs)
@@ -877,11 +883,9 @@ class PracticePlayerViewModel(
     }
 
     fun restart() {
-        midiPlaybackScheduler.stop()
-        pianoAudioEngine.sustainPedal(false)
-        pianoAudioEngine.allNotesOff()
-        val startPos = _selectedSection.value?.startMs ?: 0L
-        seekTo(startPos)
+        // Restart means a new attempt: clear score, mistakes, streak and elapsed time.
+        // Seeking alone left the previous 100% visible.
+        applyPracticeSettings()
     }
 
     fun onBackgroundPause() {
@@ -941,6 +945,8 @@ class PracticePlayerViewModel(
     }
 
     fun finishAndSaveSession() {
+        if (hasFinishedCurrentAttempt) return
+        hasFinishedCurrentAttempt = true
         viewModelScope.launch {
             metronomeController.stop()
             lastActiveMetronomeBpm = -1
@@ -950,6 +956,10 @@ class PracticePlayerViewModel(
             midiPlaybackScheduler.stop()
             pianoAudioEngine.sustainPedal(false)
             pianoAudioEngine.allNotesOff()
+            if (!isCurrentAttemptReady) {
+                _navigateToResult.emit("")
+                return@launch
+            }
             val result = practiceEngine.stop()
             val session = result.session
             if (session != null && (session.durationMs >= 2000L || session.correctNotes > 0 || session.wrongNotes > 0)) {
@@ -963,6 +973,14 @@ class PracticePlayerViewModel(
                     loopEndMs = _loopPointB.value
                 )
                 progressRepository.savePracticeSession(enrichedSession, session.noteResults)
+                if (sourceType == "LESSON" && sourceId.isNotBlank()) {
+                    curriculumRepository.updateLessonProgress(
+                        lessonId = sourceId,
+                        isCompleted = session.accuracy >= 70f && session.correctNotes > 0,
+                        accuracy = session.accuracy,
+                        bpm = session.bpm
+                    )
+                }
                 if (sourceType == "SONG" && sourceId.isNotBlank()) {
                     songRepository.updateLastPracticed(sourceId)
                 }
@@ -1008,7 +1026,9 @@ class PracticePlayerViewModel(
         engineFinishedJob?.cancel()
         engineFinishedJob = viewModelScope.launch {
             practiceEngine.state.collect { state ->
-                if (state.isFinished && _transportMode.value != PlayerTransportMode.DEMO) {
+                if (isCurrentAttemptReady && !hasFinishedCurrentAttempt && state.isFinished &&
+                    _transportMode.value != PlayerTransportMode.DEMO
+                ) {
                     metronomeController.stop()
                     lastActiveMetronomeBpm = -1
                     finishAndSaveSession()
@@ -1027,11 +1047,20 @@ class PracticePlayerViewModel(
             playbackData != null -> playbackData.notes
             sourceType == "LESSON" || sourceId.startsWith("lesson_") -> {
                 val lesson = curriculumRepository.getLessonById(sourceId)
-                lesson?.exercise?.notes ?: emptyList()
+                PracticeSequenceBuilder.repeatToMinimumDuration(
+                    notes = lesson?.exercise?.notes ?: emptyList(),
+                    bpm = _currentBpm.value,
+                    minimumDurationMs = 30_000L
+                )
             }
             sourceType == "EXERCISE" || sourceType == "QUICK_DRILL" || sourceId.startsWith("ex_") -> {
                 val exercise = exerciseRepository.getExerciseById(sourceId)
-                exercise?.notes ?: emptyList()
+                PracticeSequenceBuilder.repeatToMinimumDuration(
+                    notes = exercise?.notes ?: emptyList(),
+                    bpm = _currentBpm.value,
+                    minimumDurationMs = ((exercise?.targetDurationSeconds ?: 60)
+                        .coerceIn(45, 90) * 1_000L)
+                )
             }
             sourceType == "SONG" || sourceId.startsWith("song_") || sourceId.startsWith("curriculum_") -> {
                 val song = songRepository.getSongById(sourceId)

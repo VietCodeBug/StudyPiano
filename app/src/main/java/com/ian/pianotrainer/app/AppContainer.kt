@@ -33,7 +33,7 @@ interface AppContainer {
     val databaseMaintenance: DatabaseMaintenance
     val midiInput: MidiInput
     val pianoDeviceManager: PianoDeviceManager
-    val practiceEngine: PracticeEngine
+    fun createPracticeEngine(): PracticeEngine
     val metronomeController: MetronomeController
     val curriculumRepository: CurriculumRepository
     val exerciseRepository: ExerciseRepository
@@ -80,9 +80,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override val pianoDeviceManager: PianoDeviceManager
         get() = midiDriver
 
-    override val practiceEngine: PracticeEngine by lazy {
-        RealPracticeEngine(SystemPracticeClock())
-    }
+    override fun createPracticeEngine(): PracticeEngine = RealPracticeEngine(SystemPracticeClock())
 
     override val metronomeController: MetronomeController by lazy {
         RealMetronomeController()

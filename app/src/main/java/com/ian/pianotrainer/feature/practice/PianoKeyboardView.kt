@@ -1,7 +1,11 @@
 package com.ian.pianotrainer.feature.practice
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,7 +32,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,6 +91,8 @@ fun PianoKeyboardView(
     }
 
     val density = LocalDensity.current
+    val currentOnKeyPressed by rememberUpdatedState(onKeyPressed)
+    val currentOnKeyReleased by rememberUpdatedState(onKeyReleased)
 
     Column(
         modifier = modifier
@@ -171,8 +179,49 @@ fun PianoKeyboardView(
 
             val geometries = rangeResult.geometries
             val blackKeyHeightPx = with(density) { keyHeight.toPx() } * 0.62f
+            val keyboardHeightPx = with(density) { keyHeight.toPx() }
             val isDenseMode = (rangeMode == KeyboardRangeMode.SIX_OCTAVES || rangeMode == KeyboardRangeMode.FULL_88_KEYS)
 
+            // One gesture surface owns all pointers, enabling glissando and
+            // guaranteeing note-off when a pointer moves, lifts, or is cancelled.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(geometries, blackKeyHeightPx, keyboardHeightPx) {
+                        awaitEachGesture {
+                            val notesByPointer = mutableMapOf<androidx.compose.ui.input.pointer.PointerId, Int>()
+                            try {
+                                do {
+                                    val event = awaitPointerEvent()
+                                    event.changes.forEach { change ->
+                                        val previousNote = notesByPointer[change.id]
+                                        val nextNote = if (change.pressed) {
+                                            PianoGeometryCalculator.findNoteAt(
+                                                geometries.values, change.position.x, change.position.y,
+                                                keyboardHeightPx, blackKeyHeightPx
+                                            )
+                                        } else null
+                                        if (previousNote != nextNote) {
+                                            if (previousNote != null) {
+                                                notesByPointer.remove(change.id)
+                                                if (previousNote !in notesByPointer.values) currentOnKeyReleased(previousNote)
+                                            }
+                                            if (nextNote != null) {
+                                                val alreadyHeld = nextNote in notesByPointer.values
+                                                notesByPointer[change.id] = nextNote
+                                                if (!alreadyHeld) currentOnKeyPressed(nextNote)
+                                            }
+                                        }
+                                        if (change.pressed) change.consume()
+                                    }
+                                } while (event.changes.any { it.pressed })
+                            } finally {
+                                notesByPointer.values.distinct().forEach(currentOnKeyReleased)
+                                notesByPointer.clear()
+                            }
+                        }
+                    }
+            ) {
             // 1. Draw White Keys
             Box(modifier = Modifier.fillMaxSize()) {
                 rangeResult.whiteNotes.forEach { midiNote ->
@@ -182,19 +231,24 @@ fun PianoKeyboardView(
                     val isMiddleC = (midiNote == MidiConstants.MIDDLE_C_MIDI_NOTE)
                     val isCNote = (midiNote % 12 == 0)
 
-                    val keyBg = when {
+                    val targetColor = when {
                         isPressed -> PianoActiveKey
                         targetHighlight != null -> targetHighlight.color.copy(alpha = 0.4f)
                         isMiddleC -> Color(0xFFEFF6FF)
                         else -> PianoWhiteKey
                     }
+                    val keyBg by animateColorAsState(targetColor)
+                    val pressDepth by animateDpAsState(
+                        if (isPressed) 3.dp else 0.dp,
+                        spring(stiffness = 700f)
+                    )
 
                     val leftDp = with(density) { geom.left.toDp() }
                     val widthDp = with(density) { geom.width.toDp() }
 
                     Box(
                         modifier = Modifier
-                            .offset(x = leftDp)
+                            .offset(x = leftDp, y = pressDepth)
                             .width(widthDp)
                             .fillMaxHeight()
                             .padding(horizontal = 0.5.dp)
@@ -205,15 +259,6 @@ fun PianoKeyboardView(
                                 color = if (targetHighlight != null) targetHighlight.color else if (isMiddleC) PianoPrimary else Color(0xFFCBD5E1),
                                 shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
                             )
-                            .pointerInput(midiNote) {
-                                detectTapGestures(
-                                    onPress = {
-                                        onKeyPressed(midiNote)
-                                        tryAwaitRelease()
-                                        onKeyReleased(midiNote)
-                                    }
-                                )
-                            }
                             .testTag("piano_key_$midiNote"),
                         contentAlignment = Alignment.BottomCenter
                     ) {
@@ -272,11 +317,16 @@ fun PianoKeyboardView(
                     val isPressed = midiNote in activeNotes
                     val targetHighlight = targetNotesMap[midiNote]
 
-                    val keyBg = when {
+                    val targetColor = when {
                         isPressed -> PianoActiveKey
                         targetHighlight != null -> targetHighlight.color
                         else -> PianoBlackKey
                     }
+                    val keyBg by animateColorAsState(targetColor)
+                    val pressDepth by animateDpAsState(
+                        if (isPressed) 2.dp else 0.dp,
+                        spring(stiffness = 800f)
+                    )
 
                     val leftDp = with(density) { geom.left.toDp() }
                     val widthDp = with(density) { geom.width.toDp() }
@@ -284,7 +334,7 @@ fun PianoKeyboardView(
 
                     Box(
                         modifier = Modifier
-                            .offset(x = leftDp)
+                            .offset(x = leftDp, y = pressDepth)
                             .width(widthDp)
                             .height(heightDp)
                             .zIndex(2f)
@@ -296,15 +346,6 @@ fun PianoKeyboardView(
                                 color = if (targetHighlight != null) targetHighlight.color else Color(0xFF0F172A),
                                 shape = RoundedCornerShape(bottomStart = 3.dp, bottomEnd = 3.dp)
                             )
-                            .pointerInput(midiNote) {
-                                detectTapGestures(
-                                    onPress = {
-                                        onKeyPressed(midiNote)
-                                        tryAwaitRelease()
-                                        onKeyReleased(midiNote)
-                                    }
-                                )
-                            }
                             .testTag("piano_key_$midiNote"),
                         contentAlignment = Alignment.BottomCenter
                     ) {
@@ -332,6 +373,7 @@ fun PianoKeyboardView(
                     }
                 }
             }
+        }
         }
     }
 }

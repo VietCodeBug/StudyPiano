@@ -8,6 +8,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -135,13 +136,6 @@ fun PracticePlayerScreen(
             }
         }
     }
-
-    LaunchedEffect(uiState.isFinished) {
-        if (uiState.isFinished && uiState.exerciseNotes.isNotEmpty() && !uiState.isLooping && uiState.transportMode != PlayerTransportMode.DEMO) {
-            viewModel.finishAndSaveSession()
-        }
-    }
-
 
     LaunchedEffect(showSettingsSheet) {
         viewModel.onSettingsVisibilityChanged(showSettingsSheet)
@@ -590,7 +584,9 @@ fun PracticeSettingsBottomSheet(
                     Text("Chọn đoạn luyện (Section)", style = MaterialTheme.typography.bodySmall, color = PianoTextSecondary)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         FilterChip(
@@ -603,7 +599,7 @@ fun PracticeSettingsBottomSheet(
                                 containerColor = PianoSurfaceVariant
                             )
                         )
-                        uiState.sections.take(4).forEach { sec ->
+                        uiState.sections.forEach { sec ->
                             FilterChip(
                                 selected = uiState.selectedSection?.id == sec.id,
                                 onClick = { onSectionSelect(sec) },

@@ -6,6 +6,8 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.ian.pianotrainer.core.contentpack.CatalogSongItem
+import com.ian.pianotrainer.core.contentpack.OnlineSongCatalog
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
 import com.ian.pianotrainer.domain.model.ImportedSong
 import com.ian.pianotrainer.domain.model.PracticeMode
@@ -41,7 +43,8 @@ data class MySongsUiState(
     val isLoading: Boolean = false,
     val isImporting: Boolean = false,
     val feedbackMessage: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val curatedCatalog: List<CatalogSongItem> = OnlineSongCatalog.curatedSongs
 )
 
 class MySongsViewModel(
@@ -341,6 +344,35 @@ class MySongsViewModel(
                     }
                 } else {
                     _errorMessage.value = result.errorMessage ?: "Không thể tải bài nhạc từ liên kết"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Lỗi khi tải bài: ${e.localizedMessage}"
+            } finally {
+                _isImporting.value = false
+            }
+        }
+    }
+
+    fun downloadCuratedSong(item: CatalogSongItem, context: Context) {
+        viewModelScope.launch {
+            _isImporting.value = true
+            _errorMessage.value = null
+            _feedbackMessage.value = null
+            try {
+                val result = OnlineSongCatalog.downloadCurated(
+                    context = context,
+                    item = item,
+                    downloader = onlineSongDownloader,
+                    songRepository = songRepository
+                )
+                if (result.isSuccess && result.songId != null) {
+                    _feedbackMessage.value = "Tải thành công: ${result.title} (${result.noteCount} nốt)"
+                    val song = songRepository.getSongById(result.songId)
+                    if (song != null) {
+                        openSongPreparation(song)
+                    }
+                } else {
+                    _errorMessage.value = result.errorMessage ?: "Không thể tải bài nhạc '${item.title}'"
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Lỗi khi tải bài: ${e.localizedMessage}"

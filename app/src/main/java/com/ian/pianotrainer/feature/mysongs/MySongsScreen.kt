@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -29,8 +30,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -65,12 +69,15 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -87,11 +94,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ian.pianotrainer.R
 import com.ian.pianotrainer.core.designsystem.PianoBackground
+import com.ian.pianotrainer.core.designsystem.PianoGradientAppBackground
 import com.ian.pianotrainer.core.designsystem.PianoError
+import com.ian.pianotrainer.core.designsystem.PianoGradientPurple
 import com.ian.pianotrainer.core.designsystem.PianoOutline
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryContainer
+import com.ian.pianotrainer.core.designsystem.PianoPurple
+import com.ian.pianotrainer.core.designsystem.PianoPurpleContainer
 import com.ian.pianotrainer.core.designsystem.PianoShapes
+import com.ian.pianotrainer.core.designsystem.PianoSuccess
 import com.ian.pianotrainer.core.designsystem.PianoSurface
 import com.ian.pianotrainer.core.designsystem.PianoSurfaceVariant
 import com.ian.pianotrainer.core.designsystem.PianoTextPrimary
@@ -116,6 +128,7 @@ import java.util.Locale
 fun MySongsScreen(
     viewModel: MySongsViewModel,
     onStartPractice: (title: String, songId: String, handMode: String, practiceMode: PracticeMode, bpm: Int) -> Unit,
+    initialOpenDownload: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -126,9 +139,16 @@ fun MySongsScreen(
     var songToRename by remember { mutableStateOf<ImportedSong?>(null) }
     var renameInputText by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
-    var showDownloadDialog by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(initialOpenDownload) }
+    var downloadTab by remember { mutableIntStateOf(0) }
     var downloadUrlText by remember { mutableStateOf("") }
     var downloadTitleText by remember { mutableStateOf("") }
+
+    LaunchedEffect(initialOpenDownload) {
+        if (initialOpenDownload) {
+            showDownloadDialog = true
+        }
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -177,135 +197,338 @@ fun MySongsScreen(
         )
     }
 
-    // Direct download plus a truthful fallback for OnlineSequencer's browser-only export.
+    // Direct download plus Curated 1-Click Catalog
     if (showDownloadDialog) {
         AlertDialog(
             onDismissRequest = { if (!uiState.isImporting) showDownloadDialog = false },
             title = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, tint = PianoPrimary)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDownload,
+                        contentDescription = null,
+                        tint = PianoPrimary
+                    )
                     Text(
-                        text = "Thêm nhạc từ Internet",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        text = "Kho Nhạc & Tải Bài Online",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = PianoTextPrimary
                     )
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Dán liên kết tải trực tiếp tới tệp .mid, .midi, .zip hoặc .pianopack:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = PianoTextSecondary
-                    )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 450.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    TabRow(
+                        selectedTabIndex = downloadTab,
+                        containerColor = PianoBackground,
+                        contentColor = PianoPrimary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(PianoShapes.small)
+                    ) {
+                        Tab(
+                            selected = downloadTab == 0,
+                            onClick = { downloadTab = 0 },
+                            text = {
+                                Text(
+                                    text = "Tuyển chọn",
+                                    fontWeight = if (downloadTab == 0) FontWeight.Bold else FontWeight.Medium
+                                )
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
+                        Tab(
+                            selected = downloadTab == 1,
+                            onClick = { downloadTab = 1 },
+                            text = {
+                                Text(
+                                    text = "Nhập liên kết",
+                                    fontWeight = if (downloadTab == 1) FontWeight.Bold else FontWeight.Medium
+                                )
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Default.Link,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
+                    }
 
-                    OutlinedTextField(
-                        value = downloadUrlText,
-                        onValueChange = { downloadUrlText = it },
-                        enabled = !uiState.isImporting,
-                        label = { Text("URL tải trực tiếp") },
-                        placeholder = { Text("https://example.com/song.mid") },
-                        singleLine = true,
-                        leadingIcon = {
-                            Icon(imageVector = Icons.Default.Link, contentDescription = null, tint = PianoPrimary)
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PianoPrimary,
-                            unfocusedBorderColor = PianoOutline,
-                            focusedTextColor = PianoTextPrimary,
-                            unfocusedTextColor = PianoTextPrimary
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    if (downloadTab == 0) {
+                        // Curated Catalog (1-Click Download)
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(uiState.curatedCatalog, key = { it.id }) { item ->
+                                val isDownloaded = uiState.songs.any {
+                                    it.displayName.contains(item.title, ignoreCase = true) ||
+                                        it.originalFileName.contains(item.id, ignoreCase = true)
+                                }
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = PianoShapes.medium,
+                                    colors = CardDefaults.cardColors(containerColor = PianoBackground),
+                                    border = BorderStroke(1.dp, PianoOutline)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = when (item.difficulty) {
+                                                    "Cơ bản" -> Color(0x2210B981)
+                                                    "Trung bình" -> Color(0x223B82F6)
+                                                    else -> Color(0x22F43F5E)
+                                                },
+                                                modifier = Modifier.size(38.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.MusicNote,
+                                                        contentDescription = null,
+                                                        tint = when (item.difficulty) {
+                                                            "Cơ bản" -> Color(0xFF10B981)
+                                                            "Trung bình" -> PianoPrimary
+                                                            else -> Color(0xFFF43F5E)
+                                                        },
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
 
-                    OutlinedTextField(
-                        value = downloadTitleText,
-                        onValueChange = { downloadTitleText = it },
-                        enabled = !uiState.isImporting,
-                        label = { Text("Tên bài hiển thị (tùy chọn)") },
-                        placeholder = { Text("Để trống sẽ tự động lấy tên gốc") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PianoPrimary,
-                            unfocusedBorderColor = PianoOutline,
-                            focusedTextColor = PianoTextPrimary,
-                            unfocusedTextColor = PianoTextPrimary
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                                            Spacer(modifier = Modifier.width(10.dp))
 
-                    Text(
-                        text = "OnlineSequencer hiện chỉ xuất MIDI trong trình duyệt: mở bài, chọn Export MIDI, sau đó quay lại chọn tệp đã tải.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = PianoTextSecondary
-                    )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = item.title,
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = PianoTextPrimary,
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    text = "${item.composer} • ${item.genre}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = PianoTextSecondary,
+                                                    maxLines = 1
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Surface(
+                                                        shape = PianoShapes.small,
+                                                        color = PianoPrimaryContainer
+                                                    ) {
+                                                        Text(
+                                                            text = item.difficulty,
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                            color = PianoPrimary,
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = "${item.durationText} • ${item.noteCountText}",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                        color = PianoTextSecondary
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        if (isDownloaded) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color(0x2210B981)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF10B981),
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Text(
+                                                        text = "Đã có",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                        color = Color(0xFF10B981)
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = PianoPrimary,
+                                                modifier = Modifier
+                                                    .clip(CircleShape)
+                                                    .clickable(enabled = !uiState.isImporting) {
+                                                        viewModel.downloadCuratedSong(item, context)
+                                                    }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Download,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Text(
+                                                        text = "Tải",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                        color = Color.White
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Direct URL & OnlineSequencer
+                        Text(
+                            text = "Dán liên kết tải trực tiếp tới tệp .mid, .midi, .zip hoặc .pianopack:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PianoTextSecondary
+                        )
+
+                        OutlinedTextField(
+                            value = downloadUrlText,
+                            onValueChange = { downloadUrlText = it },
+                            enabled = !uiState.isImporting,
+                            label = { Text("URL tải trực tiếp") },
+                            placeholder = { Text("https://example.com/song.mid") },
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(imageVector = Icons.Default.Link, contentDescription = null, tint = PianoPrimary)
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PianoPrimary,
+                                unfocusedBorderColor = PianoOutline,
+                                focusedTextColor = PianoTextPrimary,
+                                unfocusedTextColor = PianoTextPrimary
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = downloadTitleText,
+                            onValueChange = { downloadTitleText = it },
+                            enabled = !uiState.isImporting,
+                            label = { Text("Tên bài hiển thị (tùy chọn)") },
+                            placeholder = { Text("Để trống sẽ tự động lấy tên gốc") },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PianoPrimary,
+                                unfocusedBorderColor = PianoOutline,
+                                focusedTextColor = PianoTextPrimary,
+                                unfocusedTextColor = PianoTextPrimary
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(
+                            text = "OnlineSequencer hiện chỉ xuất MIDI trong trình duyệt: mở bài, chọn Export MIDI, sau đó quay lại chọn tệp đã tải.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PianoTextSecondary
+                        )
+                    }
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (downloadUrlText.isNotBlank()) {
-                            viewModel.downloadSong(
-                                urlOrId = downloadUrlText,
-                                customTitle = downloadTitleText.takeIf { it.isNotBlank() }
+                if (downloadTab == 1) {
+                    TextButton(
+                        onClick = {
+                            if (downloadUrlText.isNotBlank()) {
+                                viewModel.downloadSong(
+                                    urlOrId = downloadUrlText,
+                                    customTitle = downloadTitleText.takeIf { it.isNotBlank() }
+                                )
+                            }
+                        },
+                        enabled = downloadUrlText.isNotBlank() && !uiState.isImporting,
+                        modifier = Modifier.testTag("confirm_download_button")
+                    ) {
+                        if (uiState.isImporting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = PianoPrimary,
+                                strokeWidth = 2.dp
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Đang tải…", color = PianoPrimary, fontWeight = FontWeight.Bold)
+                        } else {
+                            Text("Tải và thêm", color = PianoPrimary, fontWeight = FontWeight.Bold)
                         }
-                    },
-                    enabled = downloadUrlText.isNotBlank() && !uiState.isImporting,
-                    modifier = Modifier.testTag("confirm_download_button")
-                ) {
-                    if (uiState.isImporting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            color = PianoPrimary,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Đang tải…", color = PianoPrimary, fontWeight = FontWeight.Bold)
-                    } else {
-                        Text("Tải và thêm", color = PianoPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
             },
             dismissButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    TextButton(
-                        onClick = {
-                            val sequenceId = Regex("\\d+").find(downloadUrlText)?.value
-                            val pageUrl = if (sequenceId != null) {
-                                "https://onlinesequencer.net/$sequenceId"
-                            } else {
-                                "https://onlinesequencer.net/"
-                            }
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl)))
-                            }
-                        },
-                        enabled = !uiState.isImporting
-                    ) {
-                        Text("Mở OnlineSequencer", color = PianoPrimary)
-                    }
-                    TextButton(
-                        onClick = {
-                            showDownloadDialog = false
-                            filePickerLauncher.launch(
-                                arrayOf("audio/midi", "audio/x-midi", "application/zip", "application/octet-stream", "*/*")
-                            )
-                        },
-                        enabled = !uiState.isImporting
-                    ) {
-                        Text("Chọn tệp đã tải", color = PianoPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (downloadTab == 1) {
+                        TextButton(
+                            onClick = {
+                                val sequenceId = Regex("\\d+").find(downloadUrlText)?.value
+                                val pageUrl = if (sequenceId != null) {
+                                    "https://onlinesequencer.net/$sequenceId"
+                                } else {
+                                    "https://onlinesequencer.net/"
+                                }
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl)))
+                                }
+                            },
+                            enabled = !uiState.isImporting
+                        ) {
+                            Text("OnlineSequencer", color = PianoPrimary)
+                        }
                     }
                     TextButton(
                         onClick = { showDownloadDialog = false },
                         enabled = !uiState.isImporting
                     ) {
-                        Text("Hủy", color = PianoTextSecondary)
+                        Text("Đóng", color = PianoTextSecondary)
                     }
                 }
             },
             containerColor = PianoSurface,
-            shape = PianoShapes.medium
+            shape = PianoShapes.large
         )
     }
 
@@ -433,8 +656,8 @@ fun MySongsScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = PianoBackground,
-        modifier = modifier.testTag("my_songs_screen")
+        containerColor = Color.Transparent,
+        modifier = modifier.background(PianoGradientAppBackground).testTag("my_songs_screen")
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -553,6 +776,78 @@ fun MySongsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = PianoTextSecondary
                     )
+                }
+            }
+
+            // Online Music Store Header Banner
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(PianoShapes.large)
+                    .clickable { showDownloadDialog = true }
+                    .testTag("mysongs_open_catalog_banner"),
+                shape = PianoShapes.large,
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(PianoGradientPurple)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.22f),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = "Kho Nhạc Tuyển Chọn & Tải Bài",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Flower Dance, Für Elise, Canon in D,... Tải 1-chạm",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White
+                        ) {
+                            Text(
+                                text = "Mở kho",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = PianoPurple,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
                 }
             }
 

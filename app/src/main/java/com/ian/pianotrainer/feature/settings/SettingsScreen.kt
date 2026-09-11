@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Backup
@@ -22,6 +24,8 @@ import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Timer
@@ -44,6 +48,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,6 +77,7 @@ import com.ian.pianotrainer.core.ui.DangerButton
 import com.ian.pianotrainer.core.ui.SectionHeader
 import com.ian.pianotrainer.core.ui.TempoControl
 import com.ian.pianotrainer.domain.model.NoteNamingMode
+import com.ian.pianotrainer.domain.service.MetronomeSound
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -85,6 +91,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val settings by viewModel.userSettings.collectAsStateWithLifecycle()
     val backupState by viewModel.backupState.collectAsStateWithLifecycle()
+    val metronomeSound by viewModel.metronomeSound.collectAsStateWithLifecycle()
+    val customSoundName by viewModel.customSoundName.collectAsStateWithLifecycle()
+    val metronomeFeedback by viewModel.metronomeFeedback.collectAsStateWithLifecycle()
     var showResetDialog by remember { mutableStateOf(false) }
 
     // SAF Launchers
@@ -101,6 +110,19 @@ fun SettingsScreen(
     ) { uri ->
         if (uri != null) {
             viewModel.restoreBackup(context, uri)
+        }
+    }
+
+    val metronomeSoundLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) viewModel.importMetronomeSound(context, uri)
+    }
+
+    LaunchedEffect(metronomeFeedback) {
+        metronomeFeedback?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            viewModel.clearMetronomeFeedback()
         }
     }
 
@@ -296,6 +318,81 @@ fun SettingsScreen(
                                 color = PianoTextPrimary
                             )
                         }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = "Chất âm",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = PianoTextPrimary
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            MetronomeSound.builtIns.forEach { sound ->
+                                FilterChip(
+                                    selected = metronomeSound == sound,
+                                    onClick = { viewModel.setMetronomeSound(sound) },
+                                    label = { Text(sound.displayName) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PianoPrimaryContainer,
+                                        selectedLabelColor = PianoPrimary
+                                    ),
+                                    modifier = Modifier.testTag("metronome_sound_${sound.name.lowercase()}")
+                                )
+                            }
+                        }
+
+                        if (customSoundName != null) {
+                            FilterChip(
+                                selected = metronomeSound == MetronomeSound.CUSTOM,
+                                onClick = { viewModel.setMetronomeSound(MetronomeSound.CUSTOM) },
+                                label = { Text("Tùy chỉnh • $customSoundName", maxLines = 1) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = PianoPrimaryContainer,
+                                    selectedLabelColor = PianoPrimary
+                                ),
+                                modifier = Modifier.fillMaxWidth().testTag("metronome_sound_custom")
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    metronomeSoundLauncher.launch(arrayOf("audio/wav", "audio/mpeg", "audio/ogg", "audio/*"))
+                                },
+                                modifier = Modifier.weight(1f).testTag("import_metronome_sound_button"),
+                                border = BorderStroke(1.dp, PianoPrimary)
+                            ) {
+                                Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Chọn âm")
+                            }
+                            Button(
+                                onClick = viewModel::previewMetronome,
+                                modifier = Modifier.weight(1f).testTag("preview_metronome_button"),
+                                colors = ButtonDefaults.buttonColors(containerColor = PianoPrimary)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Nghe thử")
+                            }
+                        }
+
+                        Text(
+                            text = "Dùng WAV, MP3 hoặc OGG ngắn dưới 2 MB. WAV không có khoảng lặng đầu file sẽ cho nhịp chính xác nhất.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PianoTextSecondary
+                        )
 
                         Spacer(modifier = Modifier.height(14.dp))
 

@@ -83,7 +83,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override fun createPracticeEngine(): PracticeEngine = RealPracticeEngine(SystemPracticeClock())
 
     override val metronomeController: MetronomeController by lazy {
-        RealMetronomeController()
+        RealMetronomeController(context = context)
     }
 
     override val curriculumRepository: CurriculumRepository by lazy {

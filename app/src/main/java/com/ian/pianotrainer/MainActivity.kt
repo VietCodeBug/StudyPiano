@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Progress.route
                 )
 
-                val showBottomBar = currentRoute in topLevelRoutes
+                val showBottomBar = topLevelRoutes.any { it.substringBefore('?') == currentRoute?.substringBefore('?') }
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -130,6 +130,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateToSettings = {
                                     navController.navigate(Screen.Settings.route)
+                                },
+                                onNavigateToDownload = {
+                                    navController.navigate(Screen.MySongs.createRoute(openDownload = true))
                                 }
                             )
                         }
@@ -176,7 +179,16 @@ class MainActivity : ComponentActivity() {
                         }
 
                         // 4. My Songs Library
-                        composable(Screen.MySongs.route) {
+                        composable(
+                            route = Screen.MySongs.route,
+                            arguments = listOf(
+                                androidx.navigation.navArgument("openDownload") {
+                                    type = androidx.navigation.NavType.BoolType
+                                    defaultValue = false
+                                }
+                            )
+                        ) { backStackEntry ->
+                            val openDownload = backStackEntry.arguments?.getBoolean("openDownload") ?: false
                             val viewModel: MySongsViewModel = viewModel(
                                 factory = MySongsViewModel.Factory(
                                     songRepository = appContainer.songRepository,
@@ -186,6 +198,7 @@ class MainActivity : ComponentActivity() {
                             )
                             MySongsScreen(
                                 viewModel = viewModel,
+                                initialOpenDownload = openDownload,
                                 onStartPractice = { title, songId, handMode, practiceMode, bpm ->
                                     navController.navigate(
                                         Screen.PracticePlayer.createRoute(
@@ -432,7 +445,8 @@ class MainActivity : ComponentActivity() {
                             val viewModel: SettingsViewModel = viewModel(
                                 factory = SettingsViewModel.Factory(
                                     settingsRepository = appContainer.settingsRepository,
-                                    backupRepository = appContainer.backupRepository
+                                    backupRepository = appContainer.backupRepository,
+                                    metronomeController = appContainer.metronomeController
                                 )
                             )
                             SettingsScreen(

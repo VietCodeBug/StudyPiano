@@ -1,19 +1,27 @@
 package com.ian.pianotrainer.navigation
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -32,24 +40,43 @@ fun BottomNavBar(
     onNavigateToRoute: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    androidx.compose.foundation.layout.Column(modifier = modifier) {
-        HorizontalDivider(thickness = 1.dp, color = PianoOutline)
-        NavigationBar(
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(26.dp),
+            color = PianoSurface.copy(alpha = 0.98f),
+            border = BorderStroke(1.dp, PianoOutline),
             modifier = Modifier
                 .fillMaxWidth()
-                .testTag("bottom_navigation_bar"),
-            containerColor = PianoSurface,
+                .shadow(18.dp, RoundedCornerShape(26.dp), clip = false)
+        ) {
+        NavigationBar(
+            modifier = Modifier.fillMaxWidth().height(68.dp).testTag("bottom_navigation_bar"),
+            containerColor = Color.Transparent,
             tonalElevation = 0.dp
         ) {
             bottomNavItems.forEach { item ->
-                val isSelected = currentRoute == item.screen.route
+                val isSelected = currentRoute?.substringBefore('?') == item.screen.route.substringBefore('?')
+                val iconScale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.14f else 1f,
+                    animationSpec = spring(stiffness = 520f),
+                    label = "nav_icon_scale"
+                )
                 NavigationBarItem(
                     selected = isSelected,
                     onClick = { onNavigateToRoute(item.screen.route) },
                     icon = {
                         Icon(
                             imageVector = item.icon,
-                            contentDescription = stringResource(item.titleRes)
+                            contentDescription = stringResource(item.titleRes),
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = iconScale
+                                scaleY = iconScale
+                            }
                         )
                     },
                     label = {
@@ -66,10 +93,11 @@ fun BottomNavBar(
                         selectedTextColor = PianoPrimary,
                         unselectedIconColor = PianoTextSecondary.copy(alpha = 0.6f),
                         unselectedTextColor = PianoTextSecondary.copy(alpha = 0.6f),
-                        indicatorColor = PianoPrimaryContainer.copy(alpha = 0.6f)
+                        indicatorColor = PianoPrimaryContainer
                     )
                 )
             }
+        }
         }
     }
 }

@@ -59,6 +59,7 @@ import com.ian.pianotrainer.R
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoError
 import com.ian.pianotrainer.core.designsystem.PianoGold
+import com.ian.pianotrainer.core.designsystem.PianoGradientAppBackground
 import com.ian.pianotrainer.core.designsystem.PianoOutline
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryContainer
@@ -92,8 +93,8 @@ fun ProgressScreen(
         topBar = {
             AppTopBar(title = stringResource(R.string.title_progress))
         },
-        containerColor = PianoBackground,
-        modifier = modifier.testTag("progress_screen")
+        containerColor = Color.Transparent,
+        modifier = modifier.background(PianoGradientAppBackground).testTag("progress_screen")
     ) { innerPadding ->
         if (uiState.isLoading) {
             LoadingState(modifier = Modifier.padding(innerPadding))

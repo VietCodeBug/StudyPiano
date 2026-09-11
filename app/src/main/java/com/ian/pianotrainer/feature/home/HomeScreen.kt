@@ -19,7 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MenuBook
@@ -54,8 +57,14 @@ import com.ian.pianotrainer.core.designsystem.PianoError
 import com.ian.pianotrainer.core.designsystem.PianoGold
 import com.ian.pianotrainer.core.designsystem.PianoOutline
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
-import com.ian.pianotrainer.core.designsystem.PianoPrimaryContainer
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryDark
+import com.ian.pianotrainer.core.designsystem.PianoPrimaryContainer
+import com.ian.pianotrainer.core.designsystem.PianoGradientHero
+import com.ian.pianotrainer.core.designsystem.PianoGradientAppBackground
+import com.ian.pianotrainer.core.designsystem.PianoGradientOcean
+import com.ian.pianotrainer.core.designsystem.PianoGradientPurple
+import com.ian.pianotrainer.core.designsystem.PianoPurple
+import com.ian.pianotrainer.core.designsystem.PianoPurpleContainer
 import com.ian.pianotrainer.core.designsystem.PianoShapes
 import com.ian.pianotrainer.core.designsystem.PianoSuccess
 import com.ian.pianotrainer.core.designsystem.PianoSurface
@@ -77,6 +86,7 @@ fun HomeScreen(
     onNavigateToDiagnostics: () -> Unit,
     onNavigateToDevice: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToDownload: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -101,8 +111,10 @@ fun HomeScreen(
                 }
             )
         },
-        containerColor = PianoBackground,
-        modifier = modifier.testTag("home_screen")
+        containerColor = Color.Transparent,
+        modifier = modifier
+            .background(PianoGradientAppBackground)
+            .testTag("home_screen")
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -147,8 +159,9 @@ fun HomeScreen(
                             .weight(1f)
                             .testTag("home_streak_stat"),
                         shape = PianoShapes.large,
-                        colors = CardDefaults.cardColors(containerColor = PianoSurface),
-                        border = BorderStroke(1.dp, PianoOutline)
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8EF)),
+                        border = BorderStroke(1.dp, PianoGold.copy(alpha = 0.22f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
@@ -188,8 +201,9 @@ fun HomeScreen(
                             .weight(1f)
                             .testTag("home_time_stat"),
                         shape = PianoShapes.large,
-                        colors = CardDefaults.cardColors(containerColor = PianoSurface),
-                        border = BorderStroke(1.dp, PianoOutline)
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4FF)),
+                        border = BorderStroke(1.dp, PianoPrimary.copy(alpha = 0.18f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
@@ -234,12 +248,17 @@ fun HomeScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clip(PianoShapes.extraLarge)
                             .testTag("recommended_lesson_card"),
                         shape = PianoShapes.extraLarge,
-                        colors = CardDefaults.cardColors(containerColor = PianoPrimary),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                     ) {
-                        Box(modifier = Modifier.fillMaxWidth()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(PianoGradientHero)
+                        ) {
                             // Background decorative music note
                             Icon(
                                 imageVector = Icons.Default.MusicNote,
@@ -313,6 +332,118 @@ fun HomeScreen(
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                             color = PianoPrimaryDark,
                                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3.5 Online Music Hub & Download Card (Premium WOW Visual)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(PianoShapes.extraLarge)
+                        .clickable { onNavigateToDownload() }
+                        .testTag("home_online_music_hub_card"),
+                    shape = PianoShapes.extraLarge,
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(PianoGradientPurple)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.15f),
+                            modifier = Modifier
+                                .size(135.dp)
+                                .align(Alignment.TopEnd)
+                                .padding(top = 8.dp, end = 8.dp)
+                        )
+
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.25f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "KHO NHẠC ONLINE • TẢI 1-CHẠM",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "Tải Bài Hát Trực Tuyến",
+                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+
+                            Text(
+                                text = "Tải ngay các tuyệt phẩm piano kinh điển: Flower Dance, Canon in D, Für Elise, River Flows in You... về máy để luyện tập tức thì!",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.92f),
+                                maxLines = 2
+                            )
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Miễn phí • Tải nhanh",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.8f)
+                                )
+
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { onNavigateToDownload() }
+                                        .testTag("home_open_download_hub_button")
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CloudDownload,
+                                            contentDescription = null,
+                                            tint = PianoPurple,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = "Khám phá ngay",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = PianoPurple
                                         )
                                     }
                                 }

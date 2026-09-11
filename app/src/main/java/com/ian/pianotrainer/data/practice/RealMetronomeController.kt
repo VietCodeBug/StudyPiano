@@ -1,11 +1,17 @@
 package com.ian.pianotrainer.data.practice
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.SoundPool
 import android.media.AudioTrack
+import android.media.MediaMetadataRetriever
 import android.os.SystemClock
 import android.util.Log
 import com.ian.pianotrainer.domain.service.MetronomeController
+import com.ian.pianotrainer.domain.service.MetronomeSound
+import java.io.File
+import java.io.InputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.sin
 
 class RealMetronomeController(
+    private val context: Context? = null,
     private val isAudioEnabled: Boolean = true
 ) : MetronomeController {
 
@@ -33,12 +40,41 @@ class RealMetronomeController(
     private val _bpm = MutableStateFlow(60)
     override val bpm: StateFlow<Int> = _bpm.asStateFlow()
 
-    // Project-generated, non-melodic percussive clicks (16-bit PCM mono 44100Hz)
     private val sampleRate = 44100
-    private val highClickPcm: ShortArray by lazy { generatePercussiveClick(isDownbeat = true) }
-    private val lowClickPcm: ShortArray by lazy { generatePercussiveClick(isDownbeat = false) }
+    private val preferences by lazy { context?.getSharedPreferences("metronome_audio", Context.MODE_PRIVATE) }
+    private var selectedSound = runCatching {
+        MetronomeSound.valueOf(preferences?.getString("sound", null) ?: MetronomeSound.WOOD.name)
+    }.getOrDefault(MetronomeSound.WOOD)
+    private var volume = preferences?.getFloat("volume", 0.8f) ?: 0.8f
+    private val presetPcm: Map<MetronomeSound, Pair<ShortArray, ShortArray>> by lazy {
+        MetronomeSound.builtIns.associateWith { sound ->
+            generateClick(sound, true) to generateClick(sound, false)
+        }
+    }
 
     private var audioTrack: AudioTrack? = null
+    private var customSoundId = 0
+    private var previewCustomWhenLoaded = false
+    private var customSoundName: String? = preferences?.getString("custom_name", null)
+    private val soundPool: SoundPool? by lazy {
+        if (context == null) null else SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .build()
+            .also { pool ->
+                pool.setOnLoadCompleteListener { _, sampleId, status ->
+                    if (status == 0 && sampleId == customSoundId && previewCustomWhenLoaded) {
+                        previewCustomWhenLoaded = false
+                        scope.launch { playBeat(isDownbeat = true) }
+                    }
+                }
+            }
+    }
 
     init {
         try {
@@ -65,30 +101,49 @@ class RealMetronomeController(
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
             audioTrack?.play()
+            loadSavedCustomSound()
         } catch (e: Exception) {
             Log.e("RealMetronomeController", "Could not initialize AudioTrack", e)
         }
     }
 
-    /** Project-generated filtered-noise impulse; deliberately non-pitched. */
-    private fun generatePercussiveClick(isDownbeat: Boolean): ShortArray {
-        val durationMs = if (isDownbeat) 24 else 16
+    private fun generateClick(sound: MetronomeSound, isDownbeat: Boolean): ShortArray {
+        val durationMs = when (sound) {
+            MetronomeSound.WOOD -> if (isDownbeat) 42 else 32
+            MetronomeSound.MECHANICAL -> if (isDownbeat) 28 else 20
+            MetronomeSound.SOFT -> if (isDownbeat) 36 else 26
+            MetronomeSound.DIGITAL -> if (isDownbeat) 22 else 16
+            MetronomeSound.CUSTOM -> 20
+        }
         val numSamples = (sampleRate * durationMs / 1000.0).toInt()
         val samples = ShortArray(numSamples)
         var randomState = if (isDownbeat) 0x51A7C3 else 0x2C91ED
         var previousNoise = 0.0
-        val gain = if (isDownbeat) 12500.0 else 8500.0
         for (i in 0 until numSamples) {
             randomState = randomState xor (randomState shl 13)
             randomState = randomState xor (randomState ushr 17)
             randomState = randomState xor (randomState shl 5)
             val white = ((randomState and 0xFFFF) / 32767.5) - 1.0
-            val highPassed = white - previousNoise * 0.72
+            val highPassed = white - previousNoise * 0.68
             previousNoise = white
             val normalized = i.toDouble() / numSamples
-            val envelope = (1.0 - normalized) * (1.0 - normalized) * (1.0 - normalized)
-            val transient = if (i < 3) (3 - i) * 0.18 else 0.0
-            samples[i] = ((highPassed * envelope + transient) * gain)
+            val envelope = (1.0 - normalized) * (1.0 - normalized)
+            val seconds = i.toDouble() / sampleRate
+            val value = when (sound) {
+                MetronomeSound.WOOD -> {
+                    val frequency = if (isDownbeat) 720.0 else 540.0
+                    (sin(2.0 * Math.PI * frequency * seconds) * 0.72 + highPassed * 0.18) * envelope
+                }
+                MetronomeSound.MECHANICAL -> (highPassed * 0.7 + if (i < 5) 0.3 else 0.0) * envelope
+                MetronomeSound.SOFT -> highPassed * envelope * 0.32
+                MetronomeSound.DIGITAL -> {
+                    val frequency = if (isDownbeat) 1760.0 else 1320.0
+                    sin(2.0 * Math.PI * frequency * seconds) * envelope * 0.48
+                }
+                MetronomeSound.CUSTOM -> 0.0
+            }
+            val gain = if (isDownbeat) 15500.0 else 12000.0
+            samples[i] = (value * gain)
                 .toInt().coerceIn(-32767, 32767).toShort()
         }
         return samples
@@ -105,14 +160,7 @@ class RealMetronomeController(
             while (isActive && _isRunning.value) {
                 _currentBeat.value = beat
 
-                if (isAudioEnabled && audioTrack != null) {
-                    val pcm = if (beat == 1) highClickPcm else lowClickPcm
-                    try {
-                        audioTrack?.write(pcm, 0, pcm.size, AudioTrack.WRITE_NON_BLOCKING)
-                    } catch (e: Exception) {
-                        Log.e("RealMetronomeController", "Error writing metronome click", e)
-                    }
-                }
+                if (isAudioEnabled) playBeat(isDownbeat = beat == 1)
 
                 val currentBpm = _bpm.value.coerceIn(30, 240)
                 val intervalMs = 60000L / currentBpm
@@ -138,12 +186,101 @@ class RealMetronomeController(
         _bpm.value = bpm.coerceIn(30, 240)
     }
 
+    override fun getSound(): MetronomeSound = selectedSound
+
+    override fun getCustomSoundName(): String? = customSoundName
+
+    override fun setSound(sound: MetronomeSound) {
+        selectedSound = if (sound == MetronomeSound.CUSTOM && customSoundId == 0) {
+            MetronomeSound.WOOD
+        } else sound
+        preferences?.edit()?.putString("sound", selectedSound.name)?.apply()
+        preview()
+    }
+
+    override fun setVolume(volume: Float) {
+        this.volume = volume.coerceIn(0f, 1f)
+        audioTrack?.setVolume(this.volume)
+        preferences?.edit()?.putFloat("volume", this.volume)?.apply()
+    }
+
+    override fun preview() {
+        if (!isAudioEnabled) return
+        scope.launch { playBeat(isDownbeat = true) }
+    }
+
+    override suspend fun importCustomSound(input: InputStream, fileName: String): Result<Unit> = runCatching {
+        val appContext = context ?: error("Không thể lưu âm thanh trên thiết bị này")
+        val extension = fileName.substringAfterLast('.', "wav").lowercase()
+        require(extension in setOf("wav", "mp3", "ogg")) { "Chỉ hỗ trợ WAV, MP3 hoặc OGG" }
+        val directory = File(appContext.filesDir, "metronome").apply { mkdirs() }
+        val target = File(directory, "incoming_click.$extension")
+        target.outputStream().use { output ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= 2L * 1024L * 1024L) { "Âm metronome phải nhỏ hơn 2 MB" }
+                output.write(buffer, 0, count)
+            }
+            require(total > 0L) { "Tệp âm thanh bị rỗng" }
+        }
+        val durationMs = MediaMetadataRetriever().let { retriever ->
+            try {
+                retriever.setDataSource(target.absolutePath)
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            } finally {
+                retriever.release()
+            }
+        }
+        require(durationMs in 1L..2000L) { "Hãy chọn tiếng click ngắn hơn 2 giây" }
+        directory.listFiles()?.filter { it.name.startsWith("custom_click.") }?.forEach { it.delete() }
+        val finalTarget = File(directory, "custom_click.$extension")
+        require(target.renameTo(finalTarget)) { "Không thể lưu tệp âm thanh" }
+        customSoundId.takeIf { it != 0 }?.let { soundPool?.unload(it) }
+        previewCustomWhenLoaded = true
+        customSoundId = soundPool?.load(finalTarget.absolutePath, 1) ?: 0
+        require(customSoundId != 0) { "Thiết bị không đọc được tệp âm thanh này" }
+        customSoundName = fileName
+        selectedSound = MetronomeSound.CUSTOM
+        preferences?.edit()
+            ?.putString("custom_path", finalTarget.absolutePath)
+            ?.putString("custom_name", fileName)
+            ?.putString("sound", selectedSound.name)
+            ?.apply()
+    }
+
+    private fun playBeat(isDownbeat: Boolean) {
+        try {
+            if (selectedSound == MetronomeSound.CUSTOM && customSoundId != 0) {
+                val beatVolume = if (isDownbeat) volume else volume * 0.72f
+                soundPool?.play(customSoundId, beatVolume, beatVolume, 1, 0, 1f)
+            } else {
+                val pair = presetPcm[selectedSound] ?: presetPcm.getValue(MetronomeSound.WOOD)
+                val pcm = if (isDownbeat) pair.first else pair.second
+                audioTrack?.setVolume(volume)
+                audioTrack?.write(pcm, 0, pcm.size, AudioTrack.WRITE_NON_BLOCKING)
+            }
+        } catch (error: Exception) {
+            Log.e("RealMetronomeController", "Error playing metronome click", error)
+        }
+    }
+
+    private fun loadSavedCustomSound() {
+        val path = preferences?.getString("custom_path", null) ?: return
+        val file = File(path)
+        if (file.isFile) customSoundId = soundPool?.load(file.absolutePath, 1) ?: 0
+    }
+
     fun release() {
         stop()
         try {
             audioTrack?.stop()
             audioTrack?.release()
             audioTrack = null
+            soundPool?.release()
         } catch (e: Exception) {
             Log.e("RealMetronomeController", "Error releasing AudioTrack", e)
         }

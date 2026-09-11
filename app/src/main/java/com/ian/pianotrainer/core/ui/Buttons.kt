@@ -46,6 +46,11 @@ fun PrimaryButton(
             disabledContainerColor = PianoSurfaceVariant,
             disabledContentColor = PianoTextPrimary.copy(alpha = 0.4f)
         ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 5.dp,
+            pressedElevation = 1.dp,
+            disabledElevation = 0.dp
+        ),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
     ) {
         if (leadingIcon != null) {
@@ -106,7 +111,7 @@ fun PianoOutlinedButton(
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = PianoPrimary
         ),
-        border = ButtonDefaults.outlinedButtonBorder.copy(
+        border = ButtonDefaults.outlinedButtonBorder(enabled).copy(
             brush = androidx.compose.ui.graphics.SolidColor(PianoOutline)
         )
     ) {

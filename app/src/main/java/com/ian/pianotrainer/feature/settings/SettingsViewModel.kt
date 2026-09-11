@@ -2,6 +2,7 @@ package com.ian.pianotrainer.feature.settings
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -11,12 +12,16 @@ import com.ian.pianotrainer.domain.model.UserSettings
 import com.ian.pianotrainer.domain.repository.BackupManifest
 import com.ian.pianotrainer.domain.repository.BackupRepository
 import com.ian.pianotrainer.domain.repository.SettingsRepository
+import com.ian.pianotrainer.domain.service.MetronomeController
+import com.ian.pianotrainer.domain.service.MetronomeSound
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface BackupUiState {
     data object Idle : BackupUiState
@@ -27,7 +32,8 @@ sealed interface BackupUiState {
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
-    private val backupRepository: BackupRepository? = null
+    private val backupRepository: BackupRepository? = null,
+    private val metronomeController: MetronomeController? = null
 ) : ViewModel() {
 
     val userSettings: StateFlow<UserSettings> = settingsRepository.userSettings
@@ -39,6 +45,23 @@ class SettingsViewModel(
 
     private val _backupState = MutableStateFlow<BackupUiState>(BackupUiState.Idle)
     val backupState: StateFlow<BackupUiState> = _backupState.asStateFlow()
+
+    private val _metronomeSound = MutableStateFlow(metronomeController?.getSound() ?: MetronomeSound.WOOD)
+    val metronomeSound: StateFlow<MetronomeSound> = _metronomeSound.asStateFlow()
+
+    private val _customSoundName = MutableStateFlow(metronomeController?.getCustomSoundName())
+    val customSoundName: StateFlow<String?> = _customSoundName.asStateFlow()
+
+    private val _metronomeFeedback = MutableStateFlow<String?>(null)
+    val metronomeFeedback: StateFlow<String?> = _metronomeFeedback.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            userSettings.collect { settings ->
+                metronomeController?.setVolume(settings.metronomeVolume)
+            }
+        }
+    }
 
     fun setNoteNamingMode(mode: NoteNamingMode) {
         viewModelScope.launch {
@@ -61,9 +84,45 @@ class SettingsViewModel(
     }
 
     fun setMetronomeVolume(volume: Float) {
+        metronomeController?.setVolume(volume)
         viewModelScope.launch {
             settingsRepository.setMetronomeVolume(volume)
         }
+    }
+
+    fun setMetronomeSound(sound: MetronomeSound) {
+        metronomeController?.setSound(sound)
+        _metronomeSound.value = metronomeController?.getSound() ?: sound
+    }
+
+    fun previewMetronome() {
+        metronomeController?.preview()
+    }
+
+    fun importMetronomeSound(context: Context, uri: Uri) {
+        val controller = metronomeController ?: return
+        viewModelScope.launch {
+            val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: "custom_click.wav"
+            val result = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    controller.importCustomSound(input, displayName)
+                } ?: Result.failure(IllegalArgumentException("Không thể mở tệp âm thanh"))
+            }
+            if (result.isSuccess) {
+                _metronomeSound.value = MetronomeSound.CUSTOM
+                _customSoundName.value = displayName
+                _metronomeFeedback.value = "Đã dùng âm metronome: $displayName"
+            } else {
+                _metronomeFeedback.value = result.exceptionOrNull()?.message ?: "Không thể nhập âm metronome"
+            }
+        }
+    }
+
+    fun clearMetronomeFeedback() {
+        _metronomeFeedback.value = null
     }
 
     fun setDailyGoalMinutes(minutes: Int) {
@@ -138,11 +197,12 @@ class SettingsViewModel(
 
     class Factory(
         private val settingsRepository: SettingsRepository,
-        private val backupRepository: BackupRepository? = null
+        private val backupRepository: BackupRepository? = null,
+        private val metronomeController: MetronomeController? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return SettingsViewModel(settingsRepository, backupRepository) as T
+            return SettingsViewModel(settingsRepository, backupRepository, metronomeController) as T
         }
     }
 }

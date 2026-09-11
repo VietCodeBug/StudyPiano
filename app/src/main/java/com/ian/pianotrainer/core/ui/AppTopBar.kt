@@ -37,6 +37,7 @@ import com.ian.pianotrainer.R
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoError
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
+import com.ian.pianotrainer.core.designsystem.PianoSurface
 import com.ian.pianotrainer.core.designsystem.PianoSuccess
 import com.ian.pianotrainer.core.designsystem.PianoTextPrimary
 import com.ian.pianotrainer.domain.model.DeviceConnectionState
@@ -86,7 +87,8 @@ fun AppTopBar(
             actions()
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = PianoBackground
+            containerColor = PianoSurface.copy(alpha = 0.96f),
+            scrolledContainerColor = PianoSurface
         )
     )
 }

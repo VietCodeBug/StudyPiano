@@ -74,6 +74,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoError
+import com.ian.pianotrainer.core.designsystem.PianoGradientCardDark
 import com.ian.pianotrainer.core.designsystem.PianoOutline
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryDark
@@ -305,11 +306,7 @@ fun FreePlayTopBar(
         )
     )
 
-    Surface(
-        color = PianoSurface,
-        tonalElevation = 3.dp,
-        modifier = modifier
-    ) {
+    Box(modifier = modifier.background(PianoGradientCardDark)) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -320,13 +317,13 @@ fun FreePlayTopBar(
             // Left: Back & Title
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack, modifier = Modifier.size(32.dp).testTag("freeplay_back_button")) {
-                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại", tint = PianoTextPrimary, modifier = Modifier.size(20.dp))
+                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "Chơi tự do",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                    color = PianoTextPrimary
+                    color = Color.White
                 )
             }
 
@@ -337,7 +334,7 @@ fun FreePlayTopBar(
             ) {
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = if (isRecording) Color(0x33EF4444) else PianoSurfaceVariant,
+                    color = if (isRecording) Color(0x33EF4444) else Color.White.copy(alpha = 0.12f),
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp,
                         if (isRecording) Color(0xFFEF4444) else Color.Transparent
@@ -370,7 +367,7 @@ fun FreePlayTopBar(
                             Text(
                                 text = "Ghi âm",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = PianoTextPrimary
+                                color = Color.White
                             )
                         }
                     }
@@ -385,7 +382,7 @@ fun FreePlayTopBar(
                 // Saved Library Button
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = PianoSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.12f),
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable { onOpenRecordings() }
@@ -398,7 +395,7 @@ fun FreePlayTopBar(
                         Icon(
                             imageVector = Icons.Default.LibraryMusic,
                             contentDescription = "Bản thu đã lưu",
-                            tint = PianoPrimary,
+                            tint = Color(0xFF7DD3FC),
                             modifier = Modifier.size(16.dp)
                         )
                         if (savedCount > 0) {
@@ -406,7 +403,7 @@ fun FreePlayTopBar(
                             Text(
                                 text = "$savedCount",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = PianoPrimaryDark
+                                color = Color.White
                             )
                         }
                     }
@@ -417,7 +414,7 @@ fun FreePlayTopBar(
                     Icon(
                         imageVector = Icons.Default.Tune,
                         contentDescription = "Cài đặt phím",
-                        tint = PianoTextPrimary,
+                        tint = Color.White,
                         modifier = Modifier.size(18.dp)
                     )
                 }

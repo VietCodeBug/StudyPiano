@@ -56,7 +56,8 @@ fun StatCard(
         modifier = modifier.testTag(tag),
         shape = PianoShapes.medium,
         colors = CardDefaults.cardColors(containerColor = PianoSurface),
-        border = BorderStroke(1.dp, PianoOutline)
+        border = BorderStroke(1.dp, PianoOutline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),

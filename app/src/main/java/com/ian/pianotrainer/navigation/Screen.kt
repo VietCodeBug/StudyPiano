@@ -15,7 +15,9 @@ sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Learn : Screen("learn")
     object Practice : Screen("practice")
-    object MySongs : Screen("my_songs")
+    object MySongs : Screen("my_songs?openDownload={openDownload}") {
+        fun createRoute(openDownload: Boolean = false): String = "my_songs?openDownload=$openDownload"
+    }
     object Progress : Screen("progress")
 
     // Secondary Destinations

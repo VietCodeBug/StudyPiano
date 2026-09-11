@@ -1,6 +1,7 @@
 package com.ian.pianotrainer.feature.practice
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +47,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ian.pianotrainer.R
 import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoBackground
+import com.ian.pianotrainer.core.designsystem.PianoGradientAppBackground
+import com.ian.pianotrainer.core.designsystem.PianoGradientCardDark
 import com.ian.pianotrainer.core.designsystem.PianoOutline
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoShapes
@@ -112,8 +116,8 @@ fun PracticeScreen(
                 }
             }
         },
-        containerColor = PianoBackground,
-        modifier = modifier.testTag("practice_screen")
+        containerColor = Color.Transparent,
+        modifier = modifier.background(PianoGradientAppBackground).testTag("practice_screen")
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -122,13 +126,42 @@ fun PracticeScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(PianoShapes.large)
+                        .background(PianoGradientCardDark)
+                        .padding(20.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "PHÒNG LUYỆN THÔNG MINH",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = PianoPrimary
+                        )
+                        Text(
+                            text = "Thiết kế buổi tập của bạn",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "${uiState.selectedMode.name.replace('_', ' ')} • ${uiState.bpm} BPM",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.72f)
+                        )
+                    }
+                }
+            }
+
             // 1. Practice Mode Card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = PianoShapes.medium,
                     colors = CardDefaults.cardColors(containerColor = PianoSurface),
-                    border = BorderStroke(1.dp, PianoOutline)
+                    border = BorderStroke(1.dp, PianoOutline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -153,7 +186,8 @@ fun PracticeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = PianoShapes.medium,
                     colors = CardDefaults.cardColors(containerColor = PianoSurface),
-                    border = BorderStroke(1.dp, PianoOutline)
+                    border = BorderStroke(1.dp, PianoOutline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -178,7 +212,8 @@ fun PracticeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = PianoShapes.medium,
                     colors = CardDefaults.cardColors(containerColor = PianoSurface),
-                    border = BorderStroke(1.dp, PianoOutline)
+                    border = BorderStroke(1.dp, PianoOutline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -203,7 +238,8 @@ fun PracticeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = PianoShapes.medium,
                     colors = CardDefaults.cardColors(containerColor = PianoSurface),
-                    border = BorderStroke(1.dp, PianoOutline)
+                    border = BorderStroke(1.dp, PianoOutline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         TempoControl(
@@ -284,7 +320,8 @@ private fun ExerciseCard(
             .testTag("exercise_${exercise.id}"),
         shape = PianoShapes.medium,
         colors = CardDefaults.cardColors(containerColor = PianoSurface),
-        border = BorderStroke(1.dp, PianoOutline)
+        border = BorderStroke(1.dp, PianoOutline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier

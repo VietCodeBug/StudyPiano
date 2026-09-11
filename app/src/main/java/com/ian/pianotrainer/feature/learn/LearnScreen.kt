@@ -1,6 +1,7 @@
 package com.ian.pianotrainer.feature.learn
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ian.pianotrainer.R
 import com.ian.pianotrainer.core.designsystem.PianoBackground
+import com.ian.pianotrainer.core.designsystem.PianoGradientAppBackground
 import com.ian.pianotrainer.core.designsystem.PianoOutline
 import com.ian.pianotrainer.core.designsystem.PianoPrimary
 import com.ian.pianotrainer.core.designsystem.PianoPrimaryContainer
@@ -67,8 +69,8 @@ fun LearnScreen(
         topBar = {
             AppTopBar(title = stringResource(R.string.title_learn))
         },
-        containerColor = PianoBackground,
-        modifier = modifier.testTag("learn_screen")
+        containerColor = Color.Transparent,
+        modifier = modifier.background(PianoGradientAppBackground).testTag("learn_screen")
     ) { innerPadding ->
         if (uiState.isLoading) {
             LoadingState(modifier = Modifier.padding(innerPadding))

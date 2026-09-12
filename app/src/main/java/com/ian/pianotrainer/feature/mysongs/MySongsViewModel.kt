@@ -45,7 +45,19 @@ data class SongPreparationState(
     val selectedPracticeMode: PracticeMode = PracticeMode.RHYTHM,
     val customBpm: Int = 60,
     val isLoadingTracks: Boolean = true,
-    val resources: List<SongResourceState> = emptyList()
+    val resources: List<SongResourceState> = emptyList(),
+    val errorMessage: String? = null,
+    val isSaving: Boolean = false
+)
+
+enum class SongPendingAction { RENAME, DELETE }
+
+data class SongOperationState(
+    val pendingAction: SongPendingAction? = null,
+    val pendingSongId: String? = null,
+    val renameError: String? = null,
+    val deleteError: String? = null,
+    val urlError: String? = null
 )
 
 data class SongResourceState(
@@ -69,7 +81,9 @@ data class MySongsUiState(
     val isLoading: Boolean = false,
     val isImporting: Boolean = false,
     val feedbackMessage: String? = null,
-    val errorMessage: String? = null,
+    val libraryErrorMessage: String? = null,
+    val operationErrorMessage: String? = null,
+    val operation: SongOperationState = SongOperationState(),
     val curatedCatalog: List<CatalogSongItem> = OnlineSongCatalog.curatedSongs
 )
 
@@ -102,7 +116,9 @@ internal fun filterAndSortSongs(
 class MySongsViewModel(
     private val songRepository: SongRepository,
     private val contentPackImporter: com.ian.pianotrainer.core.contentpack.ContentPackImporter? = null,
-    private val onlineSongDownloader: com.ian.pianotrainer.core.contentpack.OnlineSongDownloader? = null
+    private val onlineSongDownloader: com.ian.pianotrainer.core.contentpack.OnlineSongDownloader? = null,
+    private val urlDownloadAction: (suspend (String, String?) -> com.ian.pianotrainer.core.contentpack.ContentPackImportResult)? =
+        onlineSongDownloader?.let { downloader -> { url, title -> downloader.downloadAndImport(url, title) } }
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -111,9 +127,11 @@ class MySongsViewModel(
     private val _isImporting = MutableStateFlow(false)
     private val _feedbackMessage = MutableStateFlow<String?>(null)
     private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _operation = MutableStateFlow(SongOperationState())
     private val _prepState = MutableStateFlow<SongPreparationState?>(null)
     private val _libraryRetry = MutableStateFlow(0)
     private var preparationJob: Job? = null
+    private var lastUrlRequest: Pair<String, String?>? = null
 
     private val libraryState = _libraryRetry.flatMapLatest {
         songRepository.getAllSongs()
@@ -129,8 +147,8 @@ class MySongsViewModel(
         Triple(query, favOnly, sort)
     }
 
-    private val _statusState = combine(_isImporting, _feedbackMessage, _errorMessage, _prepState) { importing, feedback, error, prep ->
-        listOf(importing as Any?, feedback, error, prep)
+    private val _statusState = combine(_isImporting, _feedbackMessage, _errorMessage, _prepState, _operation) { importing, feedback, error, prep, operation ->
+        listOf(importing as Any?, feedback, error, prep, operation)
     }
 
     val uiState: StateFlow<MySongsUiState> = combine(
@@ -147,6 +165,7 @@ class MySongsViewModel(
         val error = status[2] as String?
         @Suppress("UNCHECKED_CAST")
         val prep = status[3] as SongPreparationState?
+        val operation = status[4] as SongOperationState
 
         val allSongs = (library as? LibraryLoadState.Ready)?.songs.orEmpty()
         val filtered = filterAndSortSongs(allSongs, query, favOnly, sort)
@@ -161,7 +180,9 @@ class MySongsViewModel(
             isLoading = library is LibraryLoadState.Loading,
             isImporting = importing,
             feedbackMessage = feedback,
-            errorMessage = error ?: libraryError
+            libraryErrorMessage = libraryError,
+            operationErrorMessage = error,
+            operation = operation
         )
     }.stateIn(
         scope = viewModelScope,
@@ -202,7 +223,6 @@ class MySongsViewModel(
     }
 
     fun retryLibrary() {
-        _errorMessage.value = null
         _libraryRetry.value += 1
     }
 
@@ -224,6 +244,8 @@ class MySongsViewModel(
     fun renameSong(songId: String, newName: String, onSuccess: () -> Unit = {}) {
         val cleanName = newName.trim().take(100)
         if (cleanName.isBlank()) return
+        if (_operation.value.pendingAction != null) return
+        _operation.value = _operation.value.copy(pendingAction = SongPendingAction.RENAME, pendingSongId = songId, renameError = null)
         viewModelScope.launch {
             try {
                 songRepository.renameSong(songId, cleanName)
@@ -237,12 +259,18 @@ class MySongsViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                showError("Không thể đổi tên bài", error)
+                _operation.value = _operation.value.copy(renameError = errorText("Không thể đổi tên bài", error))
+            } finally {
+                if (_operation.value.pendingAction == SongPendingAction.RENAME && _operation.value.pendingSongId == songId) {
+                    _operation.value = _operation.value.copy(pendingAction = null, pendingSongId = null)
+                }
             }
         }
     }
 
     fun deleteSong(songId: String, onSuccess: () -> Unit = {}) {
+        if (_operation.value.pendingAction != null) return
+        _operation.value = _operation.value.copy(pendingAction = SongPendingAction.DELETE, pendingSongId = songId, deleteError = null)
         viewModelScope.launch {
             try {
                 songRepository.deleteSong(songId)
@@ -252,10 +280,17 @@ class MySongsViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                showError("Không thể xóa bài", error)
+                _operation.value = _operation.value.copy(deleteError = errorText("Không thể xóa bài", error))
+            } finally {
+                if (_operation.value.pendingAction == SongPendingAction.DELETE && _operation.value.pendingSongId == songId) {
+                    _operation.value = _operation.value.copy(pendingAction = null, pendingSongId = null)
+                }
             }
         }
     }
+
+    fun dismissRenameError() { _operation.value = _operation.value.copy(renameError = null) }
+    fun dismissDeleteError() { _operation.value = _operation.value.copy(deleteError = null) }
 
     fun openSongPreparation(song: ImportedSong) {
         preparationJob?.cancel()
@@ -265,7 +300,8 @@ class MySongsViewModel(
             tracks = emptyList(),
             selectedPracticeMode = PracticeMode.WAIT_FOR_NOTE,
             customBpm = song.defaultBpm,
-            isLoadingTracks = true
+            isLoadingTracks = true,
+            errorMessage = null
         )
         preparationJob = viewModelScope.launch {
             try {
@@ -289,11 +325,15 @@ class MySongsViewModel(
                 throw error
             } catch (error: Exception) {
                 if (_prepState.value?.song?.id == requestedId) {
-                    _prepState.value = _prepState.value?.copy(isLoadingTracks = false)
-                    showError("Không thể tải chi tiết bài", error)
+                    _prepState.value = _prepState.value?.copy(isLoadingTracks = false, errorMessage = errorText("Không thể tải chi tiết bài", error))
                 }
             }
         }
+    }
+
+    fun retrySongPreparation() {
+        val song = _prepState.value?.song ?: return
+        openSongPreparation(song)
     }
 
     fun closeSongPreparation() {
@@ -340,9 +380,11 @@ class MySongsViewModel(
         val current = _prepState.value ?: return
         val activeTracks = current.tracks.filter { it.isSelectedForPractice }
         if (activeTracks.isEmpty()) {
-            _errorMessage.value = "Hãy chọn ít nhất một track để luyện tập"
+            _prepState.value = current.copy(errorMessage = "Hãy chọn ít nhất một track để luyện tập")
             return
         }
+        if (current.isSaving) return
+        _prepState.value = current.copy(isSaving = true, errorMessage = null)
 
         viewModelScope.launch {
             try {
@@ -357,7 +399,9 @@ class MySongsViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                showError("Không thể lưu cấu hình luyện", error)
+                _prepState.value?.takeIf { it.song.id == current.song.id }?.let {
+                    _prepState.value = it.copy(isSaving = false, errorMessage = errorText("Không thể lưu cấu hình luyện", error))
+                }
             }
         }
     }
@@ -419,17 +463,19 @@ class MySongsViewModel(
     }
 
     fun downloadSong(urlOrId: String, customTitle: String? = null) {
-        if (onlineSongDownloader == null) {
-            _errorMessage.value = "Chức năng tải bài trực tuyến chưa khả dụng"
+        lastUrlRequest = urlOrId to customTitle
+        val downloader = urlDownloadAction
+        if (downloader == null) {
+            _operation.value = _operation.value.copy(urlError = "Chức năng tải bài trực tuyến chưa khả dụng")
             return
         }
         viewModelScope.launch {
             if (_isImporting.value) return@launch
             _isImporting.value = true
-            _errorMessage.value = null
+            _operation.value = _operation.value.copy(urlError = null)
             _feedbackMessage.value = null
             try {
-                val result = onlineSongDownloader.downloadAndImport(urlOrId, customTitle)
+                val result = downloader(urlOrId, customTitle)
                 if (result.isSuccess && result.songId != null) {
                     _feedbackMessage.value = "Tải thành công: ${result.title} (${result.noteCount} nốt)"
                     val song = songRepository.getSongById(result.songId)
@@ -437,17 +483,24 @@ class MySongsViewModel(
                         openSongPreparation(song)
                     }
                 } else {
-                    _errorMessage.value = result.errorMessage ?: "Không thể tải bài nhạc từ liên kết"
+                    _operation.value = _operation.value.copy(urlError = result.errorMessage ?: "Không thể tải bài nhạc từ liên kết")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _errorMessage.value = "Lỗi khi tải bài: ${e.localizedMessage}"
+                _operation.value = _operation.value.copy(urlError = errorText("Lỗi khi tải bài", e))
             } finally {
                 _isImporting.value = false
             }
         }
     }
+
+    fun retryUrlImport() {
+        val request = lastUrlRequest ?: return
+        downloadSong(request.first, request.second)
+    }
+
+    fun dismissUrlError() { _operation.value = _operation.value.copy(urlError = null) }
 
     fun downloadCuratedSong(item: CatalogSongItem, context: Context) {
         viewModelScope.launch {
@@ -597,8 +650,11 @@ class MySongsViewModel(
     }
 
     private fun showError(prefix: String, error: Throwable) {
-        _errorMessage.value = prefix + ": " + (error.localizedMessage ?: "lỗi không xác định")
+        _errorMessage.value = errorText(prefix, error)
     }
+
+    private fun errorText(prefix: String, error: Throwable) =
+        prefix + ": " + (error.localizedMessage ?: "lỗi không xác định")
 
     class Factory(
         private val songRepository: SongRepository,

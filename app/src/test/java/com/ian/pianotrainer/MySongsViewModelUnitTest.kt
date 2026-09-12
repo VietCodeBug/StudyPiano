@@ -8,6 +8,8 @@ import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
 import com.ian.pianotrainer.domain.model.*
 import com.ian.pianotrainer.domain.repository.SongRepository
 import com.ian.pianotrainer.feature.mysongs.MySongsViewModel
+import com.ian.pianotrainer.feature.mysongs.SongPendingAction
+import com.ian.pianotrainer.core.contentpack.ContentPackImportResult
 import java.io.File
 import java.io.InputStream
 import kotlinx.coroutines.CompletableDeferred
@@ -96,11 +98,67 @@ class MySongsViewModelUnitTest {
         val vm = MySongsViewModel(repo)
         collect(vm)
         advanceUntilIdle()
-        assertTrue(vm.uiState.value.errorMessage.orEmpty().contains("DB unavailable"))
+        assertTrue(vm.uiState.value.libraryErrorMessage.orEmpty().contains("DB unavailable"))
         vm.retryLibrary()
         advanceUntilIdle()
         assertEquals(listOf("ok"), vm.uiState.value.songs.map { it.id })
-        assertNull(vm.uiState.value.errorMessage)
+        assertNull(vm.uiState.value.libraryErrorMessage)
+    }
+
+    @Test fun urlRetryUsesTheExactPreviousRequest() = runTest {
+        val calls = mutableListOf<Pair<String, String?>>()
+        val vm = MySongsViewModel(FakeRepo(), urlDownloadAction = { url, title ->
+            calls += url to title
+            ContentPackImportResult(isSuccess = false, errorMessage = "offline")
+        })
+        collect(vm)
+        vm.downloadSong("https://example.test/song.mid", "Tên riêng")
+        advanceUntilIdle()
+        assertEquals("offline", vm.uiState.value.operation.urlError)
+        vm.retryUrlImport()
+        advanceUntilIdle()
+        assertEquals(listOf("https://example.test/song.mid" to "Tên riêng", "https://example.test/song.mid" to "Tên riêng"), calls)
+    }
+
+    @Test fun detailRetryReloadsTheSameSong() = runTest {
+        val repo = FakeRepo().apply { failTrackLoads = 1 }
+        val vm = MySongsViewModel(repo)
+        collect(vm)
+        vm.openSongPreparation(song("detail"))
+        await { vm.uiState.value.prepState?.errorMessage != null }
+        assertNotNull(vm.uiState.value.prepState?.errorMessage)
+        vm.retrySongPreparation()
+        await { vm.uiState.value.prepState?.isLoadingTracks == false && vm.uiState.value.prepState?.errorMessage == null }
+        assertEquals("detail", vm.uiState.value.prepState?.song?.id)
+        assertNull(vm.uiState.value.prepState?.errorMessage)
+        assertEquals(2, repo.trackLoadCalls)
+    }
+
+    @Test fun renameAndDeleteFailuresStayScopedAndKeepActionAvailable() = runTest {
+        val repo = FakeRepo().apply { failRename = true; failDelete = true }
+        val vm = MySongsViewModel(repo)
+        collect(vm)
+        vm.renameSong("a", "Tên đang sửa")
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.operation.renameError.orEmpty().contains("rename failed"))
+        assertNull(vm.uiState.value.operation.pendingAction)
+        vm.deleteSong("a")
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.operation.deleteError.orEmpty().contains("delete failed"))
+        assertNull(vm.uiState.value.operation.pendingAction)
+    }
+
+    @Test fun duplicateRenameIsIgnoredWhileFirstRequestIsRunning() = runTest {
+        val repo = FakeRepo().apply { renameGate = CompletableDeferred() }
+        val vm = MySongsViewModel(repo)
+        collect(vm)
+        vm.renameSong("a", "Một")
+        vm.renameSong("a", "Hai")
+        assertEquals(SongPendingAction.RENAME, vm.uiState.value.operation.pendingAction)
+        assertEquals(1, repo.renameCalls)
+        repo.renameGate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, repo.renameCalls)
     }
 
     @Test fun importLoadingRemainsTrueUntilRepositoryCompletes() = runTest {
@@ -137,6 +195,12 @@ class MySongsViewModelUnitTest {
         var savedTracks = emptyList<SongTrackEntity>()
         var failLibraryOnce = false
         var importGate: CompletableDeferred<Unit>? = null
+        var renameGate: CompletableDeferred<Unit>? = null
+        var failRename = false
+        var failDelete = false
+        var failTrackLoads = 0
+        var trackLoadCalls = 0
+        var renameCalls = 0
         val importStarted = CompletableDeferred<Unit>()
         private var libraryCalls = 0
         override fun getAllSongs(): Flow<List<ImportedSong>> = flow {
@@ -148,16 +212,16 @@ class MySongsViewModelUnitTest {
         override fun getFavoriteSongs() = flowOf(songs.value.filter { it.isFavorite })
         override suspend fun getSongById(id: String) = songs.value.find { it.id == id }
         override suspend fun getSongPlaybackData(id: String): SongPlaybackData? = null
-        override suspend fun getSongTracks(songId: String): List<SongTrackEntity> { trackGates[songId]?.await(); return tracks[songId].orEmpty() }
+        override suspend fun getSongTracks(songId: String): List<SongTrackEntity> { trackLoadCalls++; if (failTrackLoads-- > 0) error("detail failed"); trackGates[songId]?.await(); return tracks[songId].orEmpty() }
         override suspend fun getSongNotes(songId: String) = emptyList<SongNoteEntity>()
         override suspend fun getSongTimeSignatures(songId: String) = emptyList<SongTimeSignature>()
         override suspend fun importMidiFile(inputStream: InputStream, originalFileName: String, fileSize: Long, customTitle: String?): Result<ImportedSong> {
             importStarted.complete(Unit); importGate?.await(); return Result.success(ImportedSong("imported", "Imported", originalFileName))
         }
         override suspend fun updateTrackConfigurations(songId: String, tracks: List<SongTrackEntity>) { savedTracks = tracks }
-        override suspend fun renameSong(id: String, newName: String) { songs.value = songs.value.map { if (it.id == id) it.copy(displayName = newName) else it } }
+        override suspend fun renameSong(id: String, newName: String) { renameCalls++; renameGate?.await(); if (failRename) error("rename failed"); songs.value = songs.value.map { if (it.id == id) it.copy(displayName = newName) else it } }
         override suspend fun toggleFavorite(id: String) { songs.value = songs.value.map { if (it.id == id) it.copy(isFavorite = !it.isFavorite) else it } }
-        override suspend fun deleteSong(id: String) { songs.value = songs.value.filterNot { it.id == id } }
+        override suspend fun deleteSong(id: String) { if (failDelete) error("delete failed"); songs.value = songs.value.filterNot { it.id == id } }
         override suspend fun updateLastPracticed(id: String) {}
         override suspend fun seedCurriculumRepertoire() = 0
         override fun getPracticePresets(songId: String) = flowOf(emptyList<SongPracticePreset>())

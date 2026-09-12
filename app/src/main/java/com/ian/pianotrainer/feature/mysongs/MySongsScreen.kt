@@ -53,6 +53,8 @@ fun MySongsScreen(
     var rename by remember { mutableStateOf<ImportedSong?>(null) }
     var renameText by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<ImportedSong?>(null) }
+    val isRenaming = state.operation.pendingAction == SongPendingAction.RENAME
+    val isDeleting = state.operation.pendingAction == SongPendingAction.DELETE
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let { viewModel.importFromUri(it, context) }
@@ -60,34 +62,44 @@ fun MySongsScreen(
     LaunchedEffect(state.feedbackMessage) {
         state.feedbackMessage?.let { snackbar.showSnackbar(it); viewModel.clearFeedback() }
     }
+    LaunchedEffect(state.prepState?.song?.id) {
+        if (linkOpen && state.prepState != null && state.operation.urlError == null) linkOpen = false
+    }
     deleting?.let { song ->
         AlertDialog(
-            onDismissRequest = { deleting = null },
+            onDismissRequest = { if (!isDeleting) { deleting = null; viewModel.dismissDeleteError() } },
             title = { Text("Xóa bài khỏi thư viện?") },
-            text = { Text("Bài “" + song.displayName + "” cùng MIDI, bản nhạc và audio đính kèm sẽ bị xóa khỏi thư viện trên thiết bị.") },
-            confirmButton = { TextButton(onClick = { viewModel.deleteSong(song.id) { deleting = null } }) { Text("Xóa bài", color = PianoError) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Hủy") } }
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Bài “" + song.displayName + "” cùng MIDI, bản nhạc và audio đính kèm sẽ bị xóa khỏi thư viện trên thiết bị.")
+                state.operation.deleteError?.let { DialogError(it) }
+            } },
+            confirmButton = { TextButton(enabled = !isDeleting, onClick = { viewModel.deleteSong(song.id) { deleting = null } }) { Text(if (isDeleting) "Đang xóa…" else "Xóa bài", color = PianoError) } },
+            dismissButton = { TextButton(enabled = !isDeleting, onClick = { deleting = null; viewModel.dismissDeleteError() }) { Text("Hủy") } }
         )
     }
     rename?.let { song ->
         AlertDialog(
-            onDismissRequest = { rename = null },
+            onDismissRequest = { if (!isRenaming) { rename = null; viewModel.dismissRenameError() } },
             title = { Text("Đổi tên bài") },
-            text = { OutlinedTextField(renameText, { renameText = it.take(100) }, label = { Text("Tên bài") }, modifier = Modifier.fillMaxWidth().testTag("rename_song_input")) },
-            confirmButton = { TextButton(enabled = renameText.isNotBlank(), onClick = { viewModel.renameSong(song.id, renameText) { rename = null } }) { Text("Lưu") } },
-            dismissButton = { TextButton(onClick = { rename = null }) { Text("Hủy") } }
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(renameText, { renameText = it.take(100) }, enabled = !isRenaming, label = { Text("Tên bài") }, modifier = Modifier.fillMaxWidth().testTag("rename_song_input"))
+                state.operation.renameError?.let { DialogError(it) }
+            } },
+            confirmButton = { TextButton(enabled = renameText.isNotBlank() && !isRenaming, onClick = { viewModel.renameSong(song.id, renameText) { rename = null } }) { Text(if (isRenaming) "Đang lưu…" else "Lưu") } },
+            dismissButton = { TextButton(enabled = !isRenaming, onClick = { rename = null; viewModel.dismissRenameError() }) { Text("Hủy") } }
         )
     }
     if (linkOpen) {
         AlertDialog(
-            onDismissRequest = { linkOpen = false },
+            onDismissRequest = { if (!state.isImporting) { linkOpen = false; viewModel.dismissUrlError() } },
             title = { Text("Nhập từ liên kết") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Dán URL tải trực tiếp MIDI hoặc PianoPack. Ứng dụng không tự dò file từ trang web.")
-                OutlinedTextField(link, { link = it }, label = { Text("URL file") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("import_url_input"))
+                OutlinedTextField(link, { link = it }, enabled = !state.isImporting, label = { Text("URL file") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("import_url_input"))
+                state.operation.urlError?.let { ErrorActions(it, viewModel::retryUrlImport, viewModel::dismissUrlError) }
             } },
-            confirmButton = { Button(enabled = link.isNotBlank() && !state.isImporting, onClick = { viewModel.downloadSong(link); linkOpen = false }, modifier = Modifier.testTag("import_url_confirm")) { Text("Tải và nhập") } },
-            dismissButton = { TextButton(onClick = { linkOpen = false }) { Text("Hủy") } }
+            confirmButton = { Button(enabled = link.isNotBlank() && !state.isImporting, onClick = { viewModel.downloadSong(link) }, modifier = Modifier.testTag("import_url_confirm")) { Text(if (state.isImporting) "Đang tải…" else "Tải và nhập") } },
+            dismissButton = { TextButton(enabled = !state.isImporting, onClick = { linkOpen = false; viewModel.dismissUrlError() }) { Text("Hủy") } }
         )
     }
     if (sequencerOpen) {
@@ -124,7 +136,8 @@ fun MySongsScreen(
             viewModel::toggleTrackSelection,
             viewModel::updateTrackHand,
             viewModel::setPrepPracticeMode, viewModel::setPrepBpm,
-            { viewModel.saveTrackConfigAndStart(onStartPractice) }
+            { viewModel.saveTrackConfigAndStart(onStartPractice) },
+            viewModel::retrySongPreparation
         )
     }
 
@@ -159,9 +172,10 @@ fun MySongsScreen(
                     }
                     Text(state.songs.size.toString() + " bài", style = MaterialTheme.typography.bodySmall, color = PianoTextSecondary, modifier = Modifier.align(Alignment.CenterVertically))
                 }
-                state.errorMessage?.let { ErrorLine(it, viewModel::retryLibrary, viewModel::dismissError) }
+                state.operationErrorMessage?.let { ErrorLine(it, null, viewModel::dismissError) }
                 when {
                     state.isLoading -> EmptyLibrary("Đang tải thư viện…", null)
+                    state.libraryErrorMessage != null -> ErrorLine(state.libraryErrorMessage.orEmpty(), viewModel::retryLibrary, null)
                     state.songs.isEmpty() -> {
                         val filtered = state.searchQuery.isNotBlank() || state.showFavoritesOnly
                         EmptyLibrary(if (filtered) "Không tìm thấy bài phù hợp" else "Thư viện chưa có bài", if (filtered) "Thử đổi từ khóa hoặc bỏ lọc yêu thích." else "Thêm MIDI hoặc PianoPack để bắt đầu luyện.")
@@ -212,13 +226,16 @@ fun MySongsScreen(
 }
 @Composable private fun Pill(text: String) { Surface(shape = PianoShapes.small, color = PianoPrimaryContainer) { Text(text, style = MaterialTheme.typography.labelSmall, color = PianoPrimary, modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)) } }
 @Composable private fun EmptyLibrary(title: String, text: String?) { Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.LibraryMusic, null, Modifier.size(44.dp), tint = PianoTextSecondary); Text(title, fontWeight = FontWeight.Bold); text?.let { Text(it, color = PianoTextSecondary) } } } }
-@Composable private fun ErrorLine(message: String, retry: () -> Unit, close: () -> Unit) { Surface(color = PianoError.copy(alpha = .12f), modifier = Modifier.fillMaxWidth().padding(16.dp)) { Column(Modifier.padding(12.dp)) { Text(message, color = PianoError); Row { TextButton(retry) { Text("Thử lại") }; TextButton(close) { Text("Đóng") } } } } }
+@Composable private fun DialogError(message: String) { Text(message, color = PianoError, style = MaterialTheme.typography.bodySmall) }
+@Composable private fun ErrorActions(message: String, retry: (() -> Unit)?, close: (() -> Unit)?) { Column { DialogError(message); Row { retry?.let { TextButton(it) { Text("Thử lại") } }; close?.let { TextButton(it) { Text("Đóng") } } } } }
+@Composable private fun ErrorLine(message: String, retry: (() -> Unit)?, close: (() -> Unit)?) { Surface(color = PianoError.copy(alpha = .12f), modifier = Modifier.fillMaxWidth().padding(16.dp)) { Column(Modifier.padding(12.dp)) { ErrorActions(message, retry, close) } } }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable private fun SongDetail(state: SongPreparationState, dismiss: () -> Unit, favorite: () -> Unit, rename: () -> Unit, delete: () -> Unit, toggleTrack: (Int) -> Unit, setHand: (Int, String) -> Unit, mode: (PracticeMode) -> Unit, bpm: (Int) -> Unit, start: () -> Unit) {
+@Composable private fun SongDetail(state: SongPreparationState, dismiss: () -> Unit, favorite: () -> Unit, rename: () -> Unit, delete: () -> Unit, toggleTrack: (Int) -> Unit, setHand: (Int, String) -> Unit, mode: (PracticeMode) -> Unit, bpm: (Int) -> Unit, start: () -> Unit, retry: () -> Unit) {
     val song = state.song
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = PianoSurface) {
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.navigationBarsPadding().testTag("song_detail_sheet")) {
+            state.errorMessage?.let { message -> item { ErrorActions(message, if (state.isLoadingTracks) null else retry, null) } }
             item { Row(verticalAlignment = Alignment.Top) { Column(Modifier.weight(1f)) { Text(song.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(song.originalFileName, style = MaterialTheme.typography.bodySmall, color = PianoTextSecondary) }; IconButton(favorite) { Icon(if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Yêu thích") } } }
             item { Text(song.noteCount.toString() + " nốt • " + song.trackCount + " track • " + song.defaultBpm + " BPM", color = PianoTextSecondary) }
             item {
@@ -238,7 +255,7 @@ fun MySongsScreen(
             }
             item { Text("Chế độ luyện", fontWeight = FontWeight.Bold); FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { FilterChip(state.selectedPracticeMode == PracticeMode.WAIT_FOR_NOTE, { mode(PracticeMode.WAIT_FOR_NOTE) }, { Text("Chờ đúng nốt") }); FilterChip(state.selectedPracticeMode == PracticeMode.RHYTHM, { mode(PracticeMode.RHYTHM) }, { Text("Theo nhịp") }) }; Text("Tốc độ: " + state.customBpm + " BPM"); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton({ bpm(state.customBpm - 5) }) { Text("−5") }; OutlinedButton({ bpm(state.customBpm + 5) }) { Text("+5") } } }
             item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(rename, Modifier.weight(1f)) { Text("Đổi tên") }; OutlinedButton(delete, Modifier.weight(1f)) { Text("Xóa", color = PianoError) } } }
-            item { Button(start, enabled = !state.isLoadingTracks && state.tracks.any { it.isSelectedForPractice }, modifier = Modifier.fillMaxWidth().height(52.dp).testTag("start_song_practice_button")) { Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Bắt đầu luyện") } }
+            item { Button(start, enabled = !state.isLoadingTracks && !state.isSaving && state.tracks.any { it.isSelectedForPractice }, modifier = Modifier.fillMaxWidth().height(52.dp).testTag("start_song_practice_button")) { Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (state.isSaving) "Đang lưu…" else "Bắt đầu luyện") } }
         }
     }
 }

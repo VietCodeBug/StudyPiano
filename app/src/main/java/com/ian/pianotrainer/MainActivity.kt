@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
                             )
                             PracticeScreen(
                                 viewModel = viewModel,
+                                metronomeController = appContainer.metronomeController,
                                 onStartPractice = { title, sourceType, sourceId, handMode, practiceMode, displayMode, bpm ->
                                     navController.navigate(
                                         Screen.PracticePlayer.createRoute(

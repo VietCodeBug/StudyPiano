@@ -87,6 +87,7 @@ import com.ian.pianotrainer.core.designsystem.PianoSurfaceVariant
 import com.ian.pianotrainer.core.designsystem.PianoTextPrimary
 import com.ian.pianotrainer.core.designsystem.PianoTextSecondary
 import com.ian.pianotrainer.core.ui.ConfirmationDialog
+import com.ian.pianotrainer.core.ui.MetronomeControlPanel
 import com.ian.pianotrainer.core.ui.ForceLandscapeWhileVisible
 import com.ian.pianotrainer.domain.model.DisplayMode
 import com.ian.pianotrainer.domain.model.HandMode
@@ -179,6 +180,12 @@ fun PracticePlayerScreen(
             onClearLoop = viewModel::clearLoop,
             onLoopToggle = viewModel::toggleLooping,
             onMetronomeToggle = viewModel::toggleMetronome,
+            onTapTempo = viewModel::tapMetronomeTempo,
+            onMetronomeBeats = viewModel::setMetronomeBeats,
+            onMetronomeAccent = viewModel::setMetronomeAccent,
+            onMetronomeSound = viewModel::setMetronomeSound,
+            onMetronomeVolume = viewModel::setMetronomeVolume,
+            onMetronomePreview = viewModel::previewMetronome,
             onToggleAppSound = viewModel::toggleAppSound,
             onShowNoteNamesChange = viewModel::setShowNoteNames,
             onEnableInteractionChange = viewModel::setEnableVirtualKeyInteraction,
@@ -546,6 +553,12 @@ fun PracticeSettingsBottomSheet(
     onClearLoop: () -> Unit,
     onLoopToggle: () -> Unit,
     onMetronomeToggle: () -> Unit,
+    onTapTempo: () -> Unit,
+    onMetronomeBeats: (Int) -> Unit,
+    onMetronomeAccent: (Boolean) -> Unit,
+    onMetronomeSound: (com.ian.pianotrainer.domain.service.MetronomeSound) -> Unit,
+    onMetronomeVolume: (Float) -> Unit,
+    onMetronomePreview: () -> Unit,
     onToggleAppSound: () -> Unit,
     onShowNoteNamesChange: (Boolean) -> Unit,
     onEnableInteractionChange: (Boolean) -> Unit,
@@ -705,6 +718,26 @@ fun PracticeSettingsBottomSheet(
                     )
                 }
             }
+
+            // 6. Loop Controls
+            MetronomeControlPanel(
+                running = uiState.isMetronomeRunning,
+                bpm = uiState.bpm,
+                currentBeat = uiState.currentBeat,
+                beatsPerBar = uiState.metronomeBeatsPerBar,
+                accentEnabled = uiState.metronomeAccentEnabled,
+                sound = uiState.metronomeSound,
+                volume = uiState.metronomeVolume,
+                waitMode = uiState.practiceMode == PracticeMode.WAIT_FOR_NOTE,
+                onToggle = onMetronomeToggle,
+                onBpm = onBpmChange,
+                onTap = onTapTempo,
+                onBeats = onMetronomeBeats,
+                onAccent = onMetronomeAccent,
+                onSound = onMetronomeSound,
+                onVolume = onMetronomeVolume,
+                onPreview = onMetronomePreview
+            )
 
             // 6. Loop Controls
             Column {

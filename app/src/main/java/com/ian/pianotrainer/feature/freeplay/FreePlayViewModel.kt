@@ -26,6 +26,7 @@ import com.ian.pianotrainer.domain.repository.FreePlayRepository
 import com.ian.pianotrainer.domain.repository.ProgressRepository
 import com.ian.pianotrainer.domain.repository.SettingsRepository
 import com.ian.pianotrainer.domain.service.MetronomeController
+import com.ian.pianotrainer.domain.service.MetronomeSound
 import com.ian.pianotrainer.domain.service.MidiInput
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -51,6 +52,10 @@ data class FreePlayUiState(
     val isMetronomeRunning: Boolean = false,
     val bpm: Int = 80,
     val currentBeat: Int = 1,
+    val beatsPerBar: Int = 4,
+    val accentEnabled: Boolean = true,
+    val metronomeSound: MetronomeSound = MetronomeSound.MECHANICAL,
+    val metronomeVolume: Float = 0.8f,
     val isRecording: Boolean = false,
     val recordingDurationMs: Long = 0L,
     val recordedEventCount: Int = 0,
@@ -84,7 +89,9 @@ class FreePlayViewModel(
     private val _currentClockMs = MutableStateFlow(0L)
     private val _startOctave = MutableStateFlow(3)
     private val _rangeMode = MutableStateFlow(KeyboardRangeMode.TWO_OCTAVES)
-    private val _bpm = MutableStateFlow(80)
+    private val _bpm = MutableStateFlow(metronomeController.bpm.value)
+    private val _metronomeOptionsVersion = MutableStateFlow(0)
+    private val tapTimes = ArrayDeque<Long>()
 
     // Recording State
     private val _isRecording = MutableStateFlow(false)
@@ -138,6 +145,10 @@ class FreePlayViewModel(
         val isMetronome: Boolean,
         val bpm: Int,
         val beat: Int,
+        val beatsPerBar: Int,
+        val accentEnabled: Boolean,
+        val sound: MetronomeSound,
+        val volume: Float,
         val isRecording: Boolean,
         val durationMs: Long,
         val eventCount: Int,
@@ -180,7 +191,11 @@ class FreePlayViewModel(
     private data class MetroStateGroup(
         val isMetronome: Boolean,
         val bpm: Int,
-        val beat: Int
+        val beat: Int,
+        val beatsPerBar: Int,
+        val accentEnabled: Boolean,
+        val sound: MetronomeSound,
+        val volume: Float
     )
     private data class RecStateGroup(
         val isRecording: Boolean,
@@ -195,8 +210,8 @@ class FreePlayViewModel(
     )
 
     private val recordingGroupFlow = combine(
-        combine(metronomeController.isRunning, _bpm, metronomeController.currentBeat) { isMetro, bpm, beat ->
-            MetroStateGroup(isMetro, bpm, beat)
+        combine(metronomeController.isRunning, _bpm, metronomeController.currentBeat, _metronomeOptionsVersion) { isMetro, bpm, beat, _ ->
+            MetroStateGroup(isMetro, bpm, beat, metronomeController.beatsPerBar.value, metronomeController.accentEnabled.value, metronomeController.getSound(), metronomeController.volume.value)
         },
         combine(_isRecording, _recordingDurationMs, _recordedEventCount, _isAudioRecordingEnabled) { isRec, dur, cnt, audio ->
             RecStateGroup(isRec, dur, cnt, audio)
@@ -209,6 +224,10 @@ class FreePlayViewModel(
             isMetronome = metro.isMetronome,
             bpm = metro.bpm,
             beat = metro.beat,
+            beatsPerBar = metro.beatsPerBar,
+            accentEnabled = metro.accentEnabled,
+            sound = metro.sound,
+            volume = metro.volume,
             isRecording = rec.isRecording,
             durationMs = rec.durationMs,
             eventCount = rec.eventCount,
@@ -246,6 +265,10 @@ class FreePlayViewModel(
             isMetronomeRunning = rec.isMetronome,
             bpm = rec.bpm,
             currentBeat = rec.beat,
+            beatsPerBar = rec.beatsPerBar,
+            accentEnabled = rec.accentEnabled,
+            metronomeSound = rec.sound,
+            metronomeVolume = rec.volume,
             isRecording = rec.isRecording,
             recordingDurationMs = rec.durationMs,
             recordedEventCount = rec.eventCount,
@@ -445,11 +468,33 @@ class FreePlayViewModel(
         }
     }
 
+    fun onBackgroundPause() { metronomeController.stop() }
+
     fun setBpm(newBpm: Int) {
-        _bpm.value = newBpm.coerceIn(40, 240)
+        _bpm.value = newBpm.coerceIn(30, 240)
         if (metronomeController.isRunning.value) {
             metronomeController.setBpm(newBpm)
         }
+    }
+
+    fun tapTempo(nowMs: Long = SystemClock.elapsedRealtime()) {
+        if (tapTimes.isNotEmpty() && nowMs - tapTimes.last() > 2_000L) tapTimes.clear()
+        tapTimes.addLast(nowMs)
+        while (tapTimes.size > 5) tapTimes.removeFirst()
+        if (tapTimes.size >= 2) {
+            val intervals = tapTimes.zipWithNext { left, right -> right - left }.filter { it in 250L..2_000L }
+            if (intervals.isNotEmpty()) setBpm((60_000.0 / intervals.average()).toInt())
+        }
+    }
+
+    fun setMetronomeSound(sound: MetronomeSound) { metronomeController.setSound(sound); _metronomeOptionsVersion.value++ }
+    fun previewMetronome() = metronomeController.preview()
+    fun setMetronomeBeats(beats: Int) { metronomeController.setBeatsPerBar(beats); _metronomeOptionsVersion.value++ }
+    fun setMetronomeAccent(enabled: Boolean) { metronomeController.setAccentEnabled(enabled); _metronomeOptionsVersion.value++ }
+    fun setMetronomeVolume(volume: Float) {
+        metronomeController.setVolume(volume)
+        _metronomeOptionsVersion.value++
+        viewModelScope.launch { settingsRepository.setMetronomeVolume(volume.coerceIn(0f, 1f)) }
     }
 
     fun setAudioRecordingEnabled(enabled: Boolean) {

@@ -6,6 +6,8 @@ import android.media.AudioFormat
 import android.media.SoundPool
 import android.media.AudioTrack
 import android.media.MediaMetadataRetriever
+import android.media.AudioManager
+import android.media.AudioFocusRequest
 import android.os.SystemClock
 import android.util.Log
 import com.ian.pianotrainer.domain.service.MetronomeController
@@ -37,15 +39,21 @@ class RealMetronomeController(
     private val _currentBeat = MutableStateFlow(1)
     override val currentBeat: StateFlow<Int> = _currentBeat.asStateFlow()
 
-    private val _bpm = MutableStateFlow(60)
+    private val preferences by lazy { context?.getSharedPreferences("metronome_audio", Context.MODE_PRIVATE) }
+    private val _bpm = MutableStateFlow(preferences?.getInt("bpm", 60)?.coerceIn(30, 240) ?: 60)
     override val bpm: StateFlow<Int> = _bpm.asStateFlow()
 
+    private val _beatsPerBar = MutableStateFlow(preferences?.getInt("beats_per_bar", 4)?.takeIf { it in setOf(2, 3, 4, 6) } ?: 4)
+    override val beatsPerBar: StateFlow<Int> = _beatsPerBar.asStateFlow()
+    private val _accentEnabled = MutableStateFlow(preferences?.getBoolean("accent", true) ?: true)
+    override val accentEnabled: StateFlow<Boolean> = _accentEnabled.asStateFlow()
+    private val _volume = MutableStateFlow(preferences?.getFloat("volume", 0.8f)?.coerceIn(0f, 1f) ?: 0.8f)
+    override val volume: StateFlow<Float> = _volume.asStateFlow()
+
     private val sampleRate = 44100
-    private val preferences by lazy { context?.getSharedPreferences("metronome_audio", Context.MODE_PRIVATE) }
     private var selectedSound = runCatching {
-        MetronomeSound.valueOf(preferences?.getString("sound", null) ?: MetronomeSound.WOOD.name)
-    }.getOrDefault(MetronomeSound.WOOD)
-    private var volume = preferences?.getFloat("volume", 0.8f) ?: 0.8f
+        MetronomeSound.valueOf(preferences?.getString("sound", null) ?: MetronomeSound.MECHANICAL.name)
+    }.getOrDefault(MetronomeSound.MECHANICAL)
     private val presetPcm: Map<MetronomeSound, Pair<ShortArray, ShortArray>> by lazy {
         MetronomeSound.builtIns.associateWith { sound ->
             generateClick(sound, true) to generateClick(sound, false)
@@ -74,6 +82,13 @@ class RealMetronomeController(
                     }
                 }
             }
+    }
+    private val audioManager = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private val focusRequest by lazy {
+        if (android.os.Build.VERSION.SDK_INT >= 26) AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            .setOnAudioFocusChangeListener { change -> if (change < 0) stop() }
+            .build() else null
     }
 
     init {
@@ -146,10 +161,16 @@ class RealMetronomeController(
             samples[i] = (value * gain)
                 .toInt().coerceIn(-32767, 32767).toShort()
         }
+        if (samples.isNotEmpty()) { samples[0] = 0; samples[samples.lastIndex] = 0 }
         return samples
     }
     override fun start(bpm: Int) {
         setBpm(bpm)
+        if (_isRunning.value) return
+        val focusGranted = if (android.os.Build.VERSION.SDK_INT >= 26) {
+            focusRequest == null || audioManager?.requestAudioFocus(focusRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        } else true
+        if (!focusGranted) return
         _isRunning.value = true
         metronomeJob?.cancel()
 
@@ -160,17 +181,15 @@ class RealMetronomeController(
             while (isActive && _isRunning.value) {
                 _currentBeat.value = beat
 
-                if (isAudioEnabled) playBeat(isDownbeat = beat == 1)
-
-                val currentBpm = _bpm.value.coerceIn(30, 240)
-                val intervalMs = 60000L / currentBpm
-                nextBeatMonotonicMs += intervalMs
+                if (isAudioEnabled) playBeat(isDownbeat = beat == 1 && _accentEnabled.value)
 
                 val now = SystemClock.elapsedRealtime()
-                val sleepTime = (nextBeatMonotonicMs - now).coerceAtLeast(0L)
+                val deadline = MetronomeTiming.nextDeadline(nextBeatMonotonicMs, now, _bpm.value)
+                nextBeatMonotonicMs = deadline.nextDeadlineMs
+                repeat(deadline.skippedBeats) { beat = if (beat >= _beatsPerBar.value) 1 else beat + 1 }
+                val sleepTime = nextBeatMonotonicMs - now
                 delay(sleepTime)
-
-                beat = if (beat >= 4) 1 else beat + 1
+                beat = if (beat >= _beatsPerBar.value) 1 else beat + 1
             }
         }
     }
@@ -180,10 +199,24 @@ class RealMetronomeController(
         metronomeJob?.cancel()
         metronomeJob = null
         _currentBeat.value = 1
+        if (android.os.Build.VERSION.SDK_INT >= 26) focusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
     }
 
     override fun setBpm(bpm: Int) {
         _bpm.value = bpm.coerceIn(30, 240)
+        preferences?.edit()?.putInt("bpm", _bpm.value)?.apply()
+    }
+
+    override fun setBeatsPerBar(beats: Int) {
+        if (beats !in setOf(2, 3, 4, 6)) return
+        _beatsPerBar.value = beats
+        _currentBeat.value = _currentBeat.value.coerceAtMost(beats)
+        preferences?.edit()?.putInt("beats_per_bar", beats)?.apply()
+    }
+
+    override fun setAccentEnabled(enabled: Boolean) {
+        _accentEnabled.value = enabled
+        preferences?.edit()?.putBoolean("accent", enabled)?.apply()
     }
 
     override fun getSound(): MetronomeSound = selectedSound
@@ -192,16 +225,15 @@ class RealMetronomeController(
 
     override fun setSound(sound: MetronomeSound) {
         selectedSound = if (sound == MetronomeSound.CUSTOM && customSoundId == 0) {
-            MetronomeSound.WOOD
+            MetronomeSound.MECHANICAL
         } else sound
         preferences?.edit()?.putString("sound", selectedSound.name)?.apply()
-        preview()
     }
 
     override fun setVolume(volume: Float) {
-        this.volume = volume.coerceIn(0f, 1f)
-        audioTrack?.setVolume(this.volume)
-        preferences?.edit()?.putFloat("volume", this.volume)?.apply()
+        _volume.value = volume.coerceIn(0f, 1f)
+        audioTrack?.setVolume(_volume.value)
+        preferences?.edit()?.putFloat("volume", _volume.value)?.apply()
     }
 
     override fun preview() {
@@ -255,12 +287,12 @@ class RealMetronomeController(
     private fun playBeat(isDownbeat: Boolean) {
         try {
             if (selectedSound == MetronomeSound.CUSTOM && customSoundId != 0) {
-                val beatVolume = if (isDownbeat) volume else volume * 0.72f
+                val beatVolume = if (isDownbeat) _volume.value else _volume.value * 0.72f
                 soundPool?.play(customSoundId, beatVolume, beatVolume, 1, 0, 1f)
             } else {
                 val pair = presetPcm[selectedSound] ?: presetPcm.getValue(MetronomeSound.WOOD)
                 val pcm = if (isDownbeat) pair.first else pair.second
-                audioTrack?.setVolume(volume)
+                audioTrack?.setVolume(_volume.value)
                 audioTrack?.write(pcm, 0, pcm.size, AudioTrack.WRITE_NON_BLOCKING)
             }
         } catch (error: Exception) {

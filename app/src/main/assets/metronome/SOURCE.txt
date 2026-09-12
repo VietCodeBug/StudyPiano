@@ -1,0 +1,7 @@
+StudyPiano built-in metronome sounds
+
+The “Máy cơ” and “Gõ gỗ” PCM samples are generated locally by
+RealMetronomeController from original synthesis parameters written for this
+project. They contain no third-party recording and require no network access.
+They are pre-rendered once when the controller is initialized and reused for
+every beat. No external license attribution is required.

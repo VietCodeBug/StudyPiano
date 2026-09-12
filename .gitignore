@@ -20,3 +20,14 @@ debug.keystore
 /dist/
 *.apk
 *.bat
+
+# Local phase-review delivery outputs (kept outside source control)
+/study-piano-phase*-review.zip
+/docs/phase*-review/
+/docs/review-evidence/
+
+# Local JVM crash diagnostics
+/hs_err_pid*.log
+/replay_pid*.log
+/**/hs_err_pid*.log
+/**/replay_pid*.log

@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.text.Collator
+import java.util.Locale
 
 enum class SongSortOption(val displayName: String) {
     RECENT_IMPORTED("Mới nhập nhất"),
@@ -49,6 +51,31 @@ data class MySongsUiState(
     val errorMessage: String? = null,
     val curatedCatalog: List<CatalogSongItem> = OnlineSongCatalog.curatedSongs
 )
+
+internal fun filterAndSortSongs(
+    songs: List<ImportedSong>,
+    query: String,
+    favoritesOnly: Boolean,
+    sort: SongSortOption
+): List<ImportedSong> = songs.filter { song ->
+    val matchesQuery = song.displayName.contains(query.trim(), ignoreCase = true) ||
+        song.originalFileName.contains(query.trim(), ignoreCase = true)
+    matchesQuery && (!favoritesOnly || song.isFavorite)
+}.let { filtered ->
+    when (sort) {
+        SongSortOption.RECENT_IMPORTED -> filtered.sortedByDescending { it.importedAt }
+        SongSortOption.RECENT_PRACTICED -> filtered.sortedWith(
+            compareByDescending<ImportedSong> { it.lastPracticedAt ?: Long.MIN_VALUE }
+                .thenByDescending { it.importedAt }
+        )
+        SongSortOption.TITLE_AZ -> {
+            val vietnamese = Collator.getInstance(Locale("vi", "VN")).apply {
+                strength = Collator.PRIMARY
+            }
+            filtered.sortedWith { left, right -> vietnamese.compare(left.displayName, right.displayName) }
+        }
+    }
+}
 
 class MySongsViewModel(
     private val songRepository: SongRepository,
@@ -87,21 +114,7 @@ class MySongsViewModel(
         @Suppress("UNCHECKED_CAST")
         val prep = status[3] as SongPreparationState?
 
-        val filtered = allSongs.filter { song ->
-            val matchesQuery = song.displayName.contains(query, ignoreCase = true) ||
-                    song.originalFileName.contains(query, ignoreCase = true)
-            val matchesFav = !favOnly || song.isFavorite
-            matchesQuery && matchesFav
-        }.let { list ->
-            when (sort) {
-                SongSortOption.RECENT_IMPORTED -> list.sortedByDescending { it.importedAt }
-                SongSortOption.RECENT_PRACTICED -> list.sortedWith(
-                    compareByDescending<ImportedSong> { it.lastPracticedAt ?: 0L }
-                        .thenByDescending { it.importedAt }
-                )
-                SongSortOption.TITLE_AZ -> list.sortedBy { it.displayName.lowercase() }
-            }
-        }
+        val filtered = filterAndSortSongs(allSongs, query, favOnly, sort)
 
         MySongsUiState(
             songs = filtered,
@@ -119,17 +132,6 @@ class MySongsViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = MySongsUiState(isLoading = true)
     )
-
-    init {
-        viewModelScope.launch {
-            try {
-                val currentSongs = songRepository.getAllSongsList()
-                if (currentSongs.isEmpty()) {
-                    songRepository.seedCurriculumRepertoire()
-                }
-            } catch (_: Exception) {}
-        }
-    }
 
     fun seedStarterSongs() {
         viewModelScope.launch {
@@ -466,6 +468,10 @@ class MySongsViewModel(
 
     fun clearFeedback() {
         _feedbackMessage.value = null
+        _errorMessage.value = null
+    }
+
+    fun dismissError() {
         _errorMessage.value = null
     }
 

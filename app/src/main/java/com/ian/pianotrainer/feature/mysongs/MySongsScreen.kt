@@ -29,11 +29,11 @@ import com.ian.pianotrainer.core.designsystem.*
 import com.ian.pianotrainer.domain.model.ImportedSong
 import com.ian.pianotrainer.domain.model.PracticeMode
 import com.ian.pianotrainer.domain.model.SongAssetType
-import java.io.File
+import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
 
 private val importTypes = arrayOf("audio/midi", "audio/x-midi", "application/x-midi", "application/zip", "application/octet-stream", "*/*")
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MySongsScreen(
     viewModel: MySongsViewModel,
@@ -60,14 +60,12 @@ fun MySongsScreen(
     LaunchedEffect(state.feedbackMessage) {
         state.feedbackMessage?.let { snackbar.showSnackbar(it); viewModel.clearFeedback() }
     }
-    LaunchedEffect(state.errorMessage) { state.errorMessage?.let { snackbar.showSnackbar(it) } }
-
     deleting?.let { song ->
         AlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Xóa bài khỏi thư viện?") },
             text = { Text("Bài “" + song.displayName + "” cùng MIDI, bản nhạc và audio đính kèm sẽ bị xóa khỏi thư viện trên thiết bị.") },
-            confirmButton = { TextButton(onClick = { viewModel.deleteSong(song.id); viewModel.closeSongPreparation(); deleting = null }) { Text("Xóa bài", color = PianoError) } },
+            confirmButton = { TextButton(onClick = { viewModel.deleteSong(song.id) { deleting = null } }) { Text("Xóa bài", color = PianoError) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Hủy") } }
         )
     }
@@ -76,7 +74,7 @@ fun MySongsScreen(
             onDismissRequest = { rename = null },
             title = { Text("Đổi tên bài") },
             text = { OutlinedTextField(renameText, { renameText = it.take(100) }, label = { Text("Tên bài") }, modifier = Modifier.fillMaxWidth().testTag("rename_song_input")) },
-            confirmButton = { TextButton(enabled = renameText.isNotBlank(), onClick = { viewModel.renameSong(song.id, renameText); rename = null }) { Text("Lưu") } },
+            confirmButton = { TextButton(enabled = renameText.isNotBlank(), onClick = { viewModel.renameSong(song.id, renameText) { rename = null } }) { Text("Lưu") } },
             dismissButton = { TextButton(onClick = { rename = null }) { Text("Hủy") } }
         )
     }
@@ -96,8 +94,14 @@ fun MySongsScreen(
         AlertDialog(
             onDismissRequest = { sequencerOpen = false },
             title = { Text("Online Sequencer") },
-            text = { Text("1. Mở bài trên Online Sequencer.\n2. Chọn Export MIDI.\n3. Quay lại và chọn file MIDI vừa tải.\n\nKhông có tải một chạm hoặc API không chính thức.") },
-            confirmButton = { TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://onlinesequencer.net/"))) }) { Text("Mở trang") } },
+            text = { Text("1. Mở bài trên Online Sequencer.\n2. Chọn Export MIDI.\n3. Quay lại và chọn file MIDI vừa tải.") },
+            confirmButton = { TextButton(onClick = {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://onlinesequencer.net/")))
+                } catch (error: Exception) {
+                    viewModel.reportError("Không tìm thấy trình duyệt để mở Online Sequencer.")
+                }
+            }) { Text("Mở trang") } },
             dismissButton = { TextButton(onClick = { sequencerOpen = false; picker.launch(importTypes) }) { Text("Chọn MIDI đã tải") } }
         )
     }
@@ -117,6 +121,8 @@ fun MySongsScreen(
             { viewModel.toggleFavorite(detail.song.id) },
             { rename = detail.song; renameText = detail.song.displayName },
             { deleting = detail.song },
+            viewModel::toggleTrackSelection,
+            viewModel::updateTrackHand,
             viewModel::setPrepPracticeMode, viewModel::setPrepBpm,
             { viewModel.saveTrackConfigAndStart(onStartPractice) }
         )
@@ -127,7 +133,7 @@ fun MySongsScreen(
         containerColor = PianoBackground,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = { Surface(color = PianoSurface, shadowElevation = 1.dp) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column { Text("Bài của tôi", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("Thư viện offline", style = MaterialTheme.typography.bodySmall, color = PianoTextSecondary) }
                 Button({ addOpen = true }, enabled = !state.isImporting, modifier = Modifier.testTag("add_song_button")) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Thêm bài") }
             }
@@ -143,7 +149,7 @@ fun MySongsScreen(
                     singleLine = true, shape = PianoShapes.medium,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).testTag("search_song_input")
                 )
-                Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(state.showFavoritesOnly, viewModel::toggleFavoritesFilter, { Text("Yêu thích") }, leadingIcon = { Icon(if (state.showFavoritesOnly) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null, Modifier.size(18.dp)) })
                     Box {
                         FilterChip(false, { sortOpen = true }, { Text(state.sortOption.displayName) }, leadingIcon = { Icon(Icons.Default.Sort, "Sắp xếp", Modifier.size(18.dp)) })
@@ -151,9 +157,9 @@ fun MySongsScreen(
                             DropdownMenuItem({ Text(option.displayName) }, { viewModel.setSortOption(option); sortOpen = false })
                         } }
                     }
-                    Spacer(Modifier.weight(1f)); Text(state.songs.size.toString() + " bài", style = MaterialTheme.typography.bodySmall, color = PianoTextSecondary)
+                    Text(state.songs.size.toString() + " bài", style = MaterialTheme.typography.bodySmall, color = PianoTextSecondary, modifier = Modifier.align(Alignment.CenterVertically))
                 }
-                state.errorMessage?.let { ErrorLine(it, viewModel::dismissError) }
+                state.errorMessage?.let { ErrorLine(it, viewModel::retryLibrary, viewModel::dismissError) }
                 when {
                     state.isLoading -> EmptyLibrary("Đang tải thư viện…", null)
                     state.songs.isEmpty() -> {
@@ -206,10 +212,10 @@ fun MySongsScreen(
 }
 @Composable private fun Pill(text: String) { Surface(shape = PianoShapes.small, color = PianoPrimaryContainer) { Text(text, style = MaterialTheme.typography.labelSmall, color = PianoPrimary, modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)) } }
 @Composable private fun EmptyLibrary(title: String, text: String?) { Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.LibraryMusic, null, Modifier.size(44.dp), tint = PianoTextSecondary); Text(title, fontWeight = FontWeight.Bold); text?.let { Text(it, color = PianoTextSecondary) } } } }
-@Composable private fun ErrorLine(message: String, close: () -> Unit) { Surface(color = PianoError.copy(alpha = .12f), modifier = Modifier.fillMaxWidth().padding(16.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { Text(message, color = PianoError, modifier = Modifier.weight(1f).padding(12.dp)); TextButton(close) { Text("Đóng") } } } }
+@Composable private fun ErrorLine(message: String, retry: () -> Unit, close: () -> Unit) { Surface(color = PianoError.copy(alpha = .12f), modifier = Modifier.fillMaxWidth().padding(16.dp)) { Column(Modifier.padding(12.dp)) { Text(message, color = PianoError); Row { TextButton(retry) { Text("Thử lại") }; TextButton(close) { Text("Đóng") } } } } }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun SongDetail(state: SongPreparationState, dismiss: () -> Unit, favorite: () -> Unit, rename: () -> Unit, delete: () -> Unit, mode: (PracticeMode) -> Unit, bpm: (Int) -> Unit, start: () -> Unit) {
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable private fun SongDetail(state: SongPreparationState, dismiss: () -> Unit, favorite: () -> Unit, rename: () -> Unit, delete: () -> Unit, toggleTrack: (Int) -> Unit, setHand: (Int, String) -> Unit, mode: (PracticeMode) -> Unit, bpm: (Int) -> Unit, start: () -> Unit) {
     val song = state.song
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = PianoSurface) {
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.navigationBarsPadding().testTag("song_detail_sheet")) {
@@ -218,16 +224,47 @@ fun MySongsScreen(
             item {
                 Text("Tài nguyên", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    val files = buildList {
-                        if (song.assets.none { it.type == SongAssetType.MIDI } && song.localFilePath != null) add(Triple("MIDI", song.originalFileName, song.localFilePath))
-                        song.assets.forEach { add(Triple(when (it.type) { SongAssetType.MIDI -> "MIDI"; SongAssetType.MUSICXML -> "Bản nhạc (file MusicXML)"; SongAssetType.REFERENCE_AUDIO -> "Audio" }, it.originalFileName, it.localFilePath)) }
+                    state.resources.forEach { resource ->
+                        Resource(when (resource.type) { SongAssetType.MIDI -> "MIDI"; SongAssetType.MUSICXML -> "Bản nhạc (file MusicXML)"; SongAssetType.REFERENCE_AUDIO -> "Audio" }, resource.fileName, resource.isAvailable)
                     }
-                    files.forEach { Resource(it.first, it.second, File(it.third).isFile) }
                 }
             }
-            item { Text("Chế độ luyện", fontWeight = FontWeight.Bold); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(state.selectedPracticeMode == PracticeMode.WAIT_FOR_NOTE, { mode(PracticeMode.WAIT_FOR_NOTE) }, { Text("Chờ đúng nốt") }); FilterChip(state.selectedPracticeMode == PracticeMode.RHYTHM, { mode(PracticeMode.RHYTHM) }, { Text("Theo nhịp") }) }; Text("Tốc độ: " + state.customBpm + " BPM"); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton({ bpm(state.customBpm - 5) }) { Text("−5") }; OutlinedButton({ bpm(state.customBpm + 5) }) { Text("+5") } } }
+            item {
+                Text("Track và tay", fontWeight = FontWeight.Bold)
+                if (state.isLoadingTracks) CircularProgressIndicator(Modifier.size(24.dp))
+                else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.tracks.forEach { track -> TrackRow(track, { toggleTrack(track.trackIndex) }, { hand -> setHand(track.trackIndex, hand) }) }
+                }
+            }
+            item { Text("Chế độ luyện", fontWeight = FontWeight.Bold); FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { FilterChip(state.selectedPracticeMode == PracticeMode.WAIT_FOR_NOTE, { mode(PracticeMode.WAIT_FOR_NOTE) }, { Text("Chờ đúng nốt") }); FilterChip(state.selectedPracticeMode == PracticeMode.RHYTHM, { mode(PracticeMode.RHYTHM) }, { Text("Theo nhịp") }) }; Text("Tốc độ: " + state.customBpm + " BPM"); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton({ bpm(state.customBpm - 5) }) { Text("−5") }; OutlinedButton({ bpm(state.customBpm + 5) }) { Text("+5") } } }
             item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(rename, Modifier.weight(1f)) { Text("Đổi tên") }; OutlinedButton(delete, Modifier.weight(1f)) { Text("Xóa", color = PianoError) } } }
             item { Button(start, enabled = !state.isLoadingTracks && state.tracks.any { it.isSelectedForPractice }, modifier = Modifier.fillMaxWidth().height(52.dp).testTag("start_song_practice_button")) { Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Bắt đầu luyện") } }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun TrackRow(track: SongTrackEntity, toggle: () -> Unit, setHand: (String) -> Unit) {
+    Card(colors = CardDefaults.cardColors(PianoSurfaceVariant), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = track.isSelectedForPractice, onCheckedChange = { toggle() }, modifier = Modifier.testTag("track_select_" + track.trackIndex))
+                Column(Modifier.weight(1f)) {
+                    Text(track.trackName.ifBlank { "Track " + (track.trackIndex + 1) }, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(track.noteCount.toString() + " nốt • " + track.channelSummary, style = MaterialTheme.typography.bodySmall, color = PianoTextSecondary)
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("RIGHT" to "Tay phải", "LEFT" to "Tay trái", "BOTH" to "Cả hai", "IGNORE" to "Bỏ qua").forEach { option ->
+                    FilterChip(
+                        selected = track.assignedHand == option.first,
+                        onClick = { setHand(option.first) },
+                        enabled = track.isSelectedForPractice,
+                        label = { Text(option.second) },
+                        modifier = Modifier.testTag("track_hand_" + track.trackIndex + "_" + option.first)
+                    )
+                }
+            }
         }
     }
 }

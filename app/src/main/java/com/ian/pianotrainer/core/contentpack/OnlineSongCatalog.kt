@@ -3,6 +3,7 @@ package com.ian.pianotrainer.core.contentpack
 import android.content.Context
 import com.ian.pianotrainer.domain.repository.SongRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 
 data class CatalogSongItem(
@@ -89,7 +90,7 @@ object OnlineSongCatalog {
             durationText = "2:50",
             noteCountText = "~620 nốt",
             downloadUrl = "https://raw.githubusercontent.com/VietCodeBug/StudyPiano/main/MID/fur_elise.mid",
-            assetFallback = "starter_songs/ode_to_joy.mid", // Fallback if offline
+            assetFallback = null,
             description = "Kiệt tác lãng mạn kinh điển của Beethoven với chủ đề nửa cung E-D# vang danh toàn cầu."
         ),
         CatalogSongItem(
@@ -101,7 +102,7 @@ object OnlineSongCatalog {
             durationText = "3:20",
             noteCountText = "~780 nốt",
             downloadUrl = "https://raw.githubusercontent.com/VietCodeBug/StudyPiano/main/MID/canon_in_d.mid",
-            assetFallback = "starter_songs/amazing_grace.mid",
+            assetFallback = null,
             description = "Chuỗi hợp âm Canon huyền thoại, mang lại cảm giác bình yên và thăng hoa sâu sắc."
         )
     )
@@ -116,25 +117,29 @@ object OnlineSongCatalog {
         songRepository: SongRepository
     ): ContentPackImportResult = withContext(Dispatchers.IO) {
         // 1. First try downloading via OnlineSongDownloader if available
-        if (downloader != null) {
+        val downloadError = if (downloader != null) {
             val result = downloader.downloadAndImport(item.downloadUrl, item.title)
             if (result.isSuccess) return@withContext result
-        }
+            result.errorMessage
+        } else "Trình tải xuống chưa khả dụng."
 
         // 2. If download fails or downloader is null, fallback to asset file if exists
         if (!item.assetFallback.isNullOrBlank()) {
-            val assetResult = runCatching {
+            val assetResult = try {
                 context.assets.open(item.assetFallback).use { stream ->
-                    val bytes = stream.readBytes()
                     songRepository.importMidiFile(
-                        inputStream = bytes.inputStream(),
+                        inputStream = stream,
                         originalFileName = "${item.id}.mid",
-                        fileSize = bytes.size.toLong(),
+                        fileSize = 0L,
                         customTitle = item.title
                     )
                 }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.failure(error)
             }
-            val imported = assetResult.getOrNull()?.getOrNull()
+            val imported = assetResult.getOrNull()
             if (imported != null) {
                 return@withContext ContentPackImportResult(
                     isSuccess = true,
@@ -149,7 +154,7 @@ object OnlineSongCatalog {
 
         ContentPackImportResult(
             isSuccess = false,
-            errorMessage = "Không thể tải hoặc cài đặt bài nhạc '${item.title}'."
+            errorMessage = "Không thể tải bài '${item.title}': ${downloadError ?: "nguồn tải không phản hồi"}. Hãy thử lại sau."
         )
     }
 }

@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.ian.pianotrainer.core.contentpack.ContentPackImporter
 import com.ian.pianotrainer.core.contentpack.OnlineSongDownloader
+import com.ian.pianotrainer.core.contentpack.OnlineSongCatalog
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -54,5 +58,19 @@ class OnlineSongDownloaderUnitTest {
             downloader.normalizeDirectUrl("https://github.com/user/repo/blob/main/music/song.mid")
         )
         assertNull(downloader.normalizeDirectUrl("file:///storage/song.mid"))
+    }
+
+    @Test
+    fun `OnlineSequencer id reports export guidance and creates no song`() = runTest {
+        val result = downloader.downloadAndImport("3134103", "Requested song")
+        assertFalse(result.isSuccess)
+        assertTrue(result.errorMessage.orEmpty().contains("Export MIDI"))
+        assertTrue(fakeRepo.importedSongs.isEmpty())
+    }
+
+    @Test
+    fun `catalog never substitutes Fur Elise or Canon with unrelated bundled songs`() {
+        assertNull(OnlineSongCatalog.curatedSongs.first { it.id == "curated_fur_elise" }.assetFallback)
+        assertNull(OnlineSongCatalog.curatedSongs.first { it.id == "curated_canon_in_d" }.assetFallback)
     }
 }

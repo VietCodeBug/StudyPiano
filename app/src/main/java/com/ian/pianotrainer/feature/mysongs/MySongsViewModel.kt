@@ -8,11 +8,14 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ian.pianotrainer.core.contentpack.CatalogSongItem
 import com.ian.pianotrainer.core.contentpack.OnlineSongCatalog
+import com.ian.pianotrainer.core.contentpack.ImportFileClassifier
+import com.ian.pianotrainer.core.contentpack.ImportFileKind
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
 import com.ian.pianotrainer.domain.model.ImportedSong
 import com.ian.pianotrainer.domain.model.PracticeMode
 import com.ian.pianotrainer.domain.repository.SongRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -274,6 +277,7 @@ class MySongsViewModel(
 
     fun importMidiFromUri(uri: Uri, context: Context, customTitle: String? = null) {
         viewModelScope.launch {
+            if (_isImporting.value) return@launch
             _isImporting.value = true
             _errorMessage.value = null
             _feedbackMessage.value = null
@@ -317,6 +321,8 @@ class MySongsViewModel(
                 }.onFailure { error ->
                     _errorMessage.value = error.localizedMessage ?: "Lỗi khi nhập file MIDI"
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _errorMessage.value = "Lỗi khi xử lý file: ${e.localizedMessage}"
             } finally {
@@ -331,6 +337,7 @@ class MySongsViewModel(
             return
         }
         viewModelScope.launch {
+            if (_isImporting.value) return@launch
             _isImporting.value = true
             _errorMessage.value = null
             _feedbackMessage.value = null
@@ -345,6 +352,8 @@ class MySongsViewModel(
                 } else {
                     _errorMessage.value = result.errorMessage ?: "Không thể tải bài nhạc từ liên kết"
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _errorMessage.value = "Lỗi khi tải bài: ${e.localizedMessage}"
             } finally {
@@ -355,6 +364,7 @@ class MySongsViewModel(
 
     fun downloadCuratedSong(item: CatalogSongItem, context: Context) {
         viewModelScope.launch {
+            if (_isImporting.value) return@launch
             _isImporting.value = true
             _errorMessage.value = null
             _feedbackMessage.value = null
@@ -374,6 +384,8 @@ class MySongsViewModel(
                 } else {
                     _errorMessage.value = result.errorMessage ?: "Không thể tải bài nhạc '${item.title}'"
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _errorMessage.value = "Lỗi khi tải bài: ${e.localizedMessage}"
             } finally {
@@ -388,6 +400,7 @@ class MySongsViewModel(
             return
         }
         viewModelScope.launch {
+            if (_isImporting.value) return@launch
             _isImporting.value = true
             _errorMessage.value = null
             _feedbackMessage.value = null
@@ -408,10 +421,45 @@ class MySongsViewModel(
                 } else {
                     _errorMessage.value = result.errorMessage ?: "Lỗi khi nhập gói bài hát"
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _errorMessage.value = "Lỗi khi xử lý gói: ${e.localizedMessage}"
             } finally {
                 _isImporting.value = false
+            }
+        }
+    }
+
+    fun importFromUri(uri: Uri, context: Context) {
+        viewModelScope.launch {
+            if (_isImporting.value) return@launch
+            _isImporting.value = true
+            _errorMessage.value = null
+            _feedbackMessage.value = null
+            try {
+                var displayName: String? = null
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) displayName = cursor.getString(0)
+                }
+                val header = context.contentResolver.openInputStream(uri)?.use { input ->
+                    val bytes = ByteArray(8)
+                    val count = input.read(bytes)
+                    if (count > 0) bytes.copyOf(count) else ByteArray(0)
+                } ?: throw IllegalArgumentException("Không thể mở tệp được chọn.")
+                _isImporting.value = false
+                when (ImportFileClassifier.classify(displayName, context.contentResolver.getType(uri), header)) {
+                    ImportFileKind.MIDI -> importMidiFromUri(uri, context)
+                    ImportFileKind.PIANO_PACK -> importPackFromUri(uri, context)
+                    ImportFileKind.UNSUPPORTED -> _errorMessage.value =
+                        "Nội dung tệp không phải MIDI hoặc ZIP/PianoPack hợp lệ. Gói MXL chỉ được nhận khi đi kèm MIDI trong PianoPack."
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _errorMessage.value = error.localizedMessage ?: "Không thể kiểm tra định dạng tệp."
+            } finally {
+                if (_isImporting.value) _isImporting.value = false
             }
         }
     }

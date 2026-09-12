@@ -117,6 +117,7 @@ import com.ian.pianotrainer.core.ui.PrimaryButton
 import com.ian.pianotrainer.core.ui.SectionHeader
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
 import com.ian.pianotrainer.domain.model.ImportedSong
+import com.ian.pianotrainer.domain.model.SongAssetType
 import com.ian.pianotrainer.domain.model.NoteNamingMode
 import com.ian.pianotrainer.domain.model.PracticeMode
 import java.text.SimpleDateFormat
@@ -154,12 +155,7 @@ fun MySongsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { pickedUri ->
-            val scheme = pickedUri.toString().lowercase()
-            if (scheme.endsWith(".zip") || scheme.endsWith(".pianopack")) {
-                viewModel.importPackFromUri(pickedUri, context)
-            } else {
-                viewModel.importMidiFromUri(pickedUri, context)
-            }
+            viewModel.importFromUri(pickedUri, context)
         }
     }
 
@@ -898,7 +894,7 @@ fun MySongsScreen(
                                         )
                                     }
                                 ) {
-                                    Text("Nhập tệp từ máy (.mid / .pianopack)", color = PianoPrimary)
+                                    Text("Nhập tệp (.mid / .midi / .zip / .pianopack)", color = PianoPrimary)
                                 }
                             }
                         }
@@ -1005,40 +1001,20 @@ private fun SongItemCard(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Surface(
-                            shape = PianoShapes.small,
-                            color = PianoPrimaryContainer
-                        ) {
-                            Text(
-                                text = "MIDI",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                                color = PianoPrimary,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
+                        val labels = buildList {
+                            if (song.assets.any { it.type == SongAssetType.MIDI } || song.localFilePath != null) add("MIDI")
+                            if (song.assets.any { it.type == SongAssetType.MUSICXML }) add("MusicXML")
+                            if (song.assets.any { it.type == SongAssetType.REFERENCE_AUDIO }) add("Audio tham chiếu")
                         }
-
-                        Surface(
-                            shape = PianoShapes.small,
-                            color = Color(0x2210B981)
-                        ) {
-                            Text(
-                                text = "Acoustic Synth",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                                color = Color(0xFF10B981),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
-                        }
-
-                        Surface(
-                            shape = PianoShapes.small,
-                            color = Color(0x22F97316)
-                        ) {
-                            Text(
-                                text = "2 tay",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                                color = Color(0xFFF97316),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
+                        labels.forEach { label ->
+                            Surface(shape = PianoShapes.small, color = PianoPrimaryContainer) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                    color = PianoPrimary,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
                         }
                     }
 

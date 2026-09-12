@@ -25,6 +25,9 @@ interface MetronomeController {
     val volume: StateFlow<Float> get() = MutableStateFlow(0.8f)
 
     fun start(bpm: Int)
+    fun startTimeline() = Unit
+    fun resetTimeline(beat: Int, bpm: Int) { setBpm(bpm) }
+    fun playTimelineBeat(beat: Int, bpm: Int, isMeasureStart: Boolean) = Unit
     fun stop()
     fun setBpm(bpm: Int)
     fun setBeatsPerBar(beats: Int) = Unit

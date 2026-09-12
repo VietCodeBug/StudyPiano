@@ -32,6 +32,8 @@ class RealMetronomeController(
 
     private val scope = CoroutineScope(Dispatchers.Default)
     private var metronomeJob: Job? = null
+    private var previewJob: Job? = null
+    private var timelineMode = false
 
     private val _isRunning = MutableStateFlow(false)
     override val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
@@ -42,6 +44,7 @@ class RealMetronomeController(
     private val preferences by lazy { context?.getSharedPreferences("metronome_audio", Context.MODE_PRIVATE) }
     private val _bpm = MutableStateFlow(preferences?.getInt("bpm", 60)?.coerceIn(30, 240) ?: 60)
     override val bpm: StateFlow<Int> = _bpm.asStateFlow()
+    private var standaloneBpm = _bpm.value
 
     private val _beatsPerBar = MutableStateFlow(preferences?.getInt("beats_per_bar", 4)?.takeIf { it in setOf(2, 3, 4, 6) } ?: 4)
     override val beatsPerBar: StateFlow<Int> = _beatsPerBar.asStateFlow()
@@ -116,6 +119,7 @@ class RealMetronomeController(
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
             audioTrack?.play()
+            presetPcm.size
             loadSavedCustomSound()
         } catch (e: Exception) {
             Log.e("RealMetronomeController", "Could not initialize AudioTrack", e)
@@ -165,6 +169,9 @@ class RealMetronomeController(
         return samples
     }
     override fun start(bpm: Int) {
+        val wasTimeline = timelineMode
+        timelineMode = false
+        if (wasTimeline) _isRunning.value = false
         setBpm(bpm)
         if (_isRunning.value) return
         val focusGranted = if (android.os.Build.VERSION.SDK_INT >= 26) {
@@ -194,16 +201,42 @@ class RealMetronomeController(
         }
     }
 
-    override fun stop() {
+    override fun startTimeline() {
+        metronomeJob?.cancel()
+        metronomeJob = null
         _isRunning.value = false
+        timelineMode = true
+        if (!requestAudioFocus()) return
+        _isRunning.value = true
+    }
+
+    override fun resetTimeline(beat: Int, bpm: Int) {
+        if (!timelineMode) return
+        _currentBeat.value = beat.coerceIn(1, _beatsPerBar.value)
+        _bpm.value = bpm.coerceIn(30, 240)
+    }
+
+    override fun playTimelineBeat(beat: Int, bpm: Int, isMeasureStart: Boolean) {
+        if (!timelineMode || !_isRunning.value) return
+        _currentBeat.value = beat.coerceIn(1, _beatsPerBar.value)
+        _bpm.value = bpm.coerceIn(30, 240)
+        if (isAudioEnabled) playBeat(isDownbeat = isMeasureStart && _accentEnabled.value)
+    }
+
+    override fun stop() {
+        val wasTimeline = timelineMode
+        _isRunning.value = false
+        timelineMode = false
         metronomeJob?.cancel()
         metronomeJob = null
         _currentBeat.value = 1
+        if (wasTimeline) _bpm.value = standaloneBpm
         if (android.os.Build.VERSION.SDK_INT >= 26) focusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
     }
 
     override fun setBpm(bpm: Int) {
         _bpm.value = bpm.coerceIn(30, 240)
+        standaloneBpm = _bpm.value
         preferences?.edit()?.putInt("bpm", _bpm.value)?.apply()
     }
 
@@ -238,7 +271,8 @@ class RealMetronomeController(
 
     override fun preview() {
         if (!isAudioEnabled) return
-        scope.launch { playBeat(isDownbeat = true) }
+        previewJob?.cancel()
+        previewJob = scope.launch { if (!_isRunning.value) playBeat(isDownbeat = true) }
     }
 
     override suspend fun importCustomSound(input: InputStream, fileName: String): Result<Unit> = runCatching {
@@ -284,6 +318,7 @@ class RealMetronomeController(
             ?.apply()
     }
 
+    @Synchronized
     private fun playBeat(isDownbeat: Boolean) {
         try {
             if (selectedSound == MetronomeSound.CUSTOM && customSoundId != 0) {
@@ -293,12 +328,25 @@ class RealMetronomeController(
                 val pair = presetPcm[selectedSound] ?: presetPcm.getValue(MetronomeSound.WOOD)
                 val pcm = if (isDownbeat) pair.first else pair.second
                 audioTrack?.setVolume(_volume.value)
-                audioTrack?.write(pcm, 0, pcm.size, AudioTrack.WRITE_NON_BLOCKING)
+                var offset = 0
+                while (offset < pcm.size) {
+                    val written = audioTrack?.write(pcm, offset, pcm.size - offset, AudioTrack.WRITE_BLOCKING)
+                        ?: AudioTrack.ERROR_INVALID_OPERATION
+                    if (written <= 0) {
+                        Log.e("RealMetronomeController", "AudioTrack.write failed: " + written)
+                        break
+                    }
+                    offset += written
+                }
             }
         } catch (error: Exception) {
             Log.e("RealMetronomeController", "Error playing metronome click", error)
         }
     }
+
+    private fun requestAudioFocus(): Boolean = if (android.os.Build.VERSION.SDK_INT >= 26) {
+        focusRequest == null || audioManager?.requestAudioFocus(focusRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    } else true
 
     private fun loadSavedCustomSound() {
         val path = preferences?.getString("custom_path", null) ?: return

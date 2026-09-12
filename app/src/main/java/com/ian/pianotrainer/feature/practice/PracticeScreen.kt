@@ -51,6 +51,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ian.pianotrainer.R
 import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoBackground
@@ -85,6 +88,7 @@ fun PracticeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val metroRunning by metronomeController.isRunning.collectAsStateWithLifecycle()
     val metroBpm by metronomeController.bpm.collectAsStateWithLifecycle()
     val metroBeat by metronomeController.currentBeat.collectAsStateWithLifecycle()
@@ -95,7 +99,11 @@ fun PracticeScreen(
     var metroOpen by remember { mutableStateOf(false) }
     val taps = remember { ArrayDeque<Long>() }
 
-    DisposableEffect(Unit) { onDispose { metronomeController.stop() } }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) metronomeController.stop() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer); metronomeController.stop() }
+    }
     if (metroOpen) ModalBottomSheet(onDismissRequest = { metroOpen = false }) {
         MetronomeControlPanel(
             running = metroRunning, bpm = metroBpm, currentBeat = metroBeat,

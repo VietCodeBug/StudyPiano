@@ -28,6 +28,11 @@ class RealMetronomeControllerUnitTest {
         assertEquals(120, first.bpm.value)
         first.stop()
         assertFalse(first.isRunning.value)
+        first.startTimeline()
+        first.resetTimeline(3, 180)
+        assertEquals(180, first.bpm.value)
+        first.stop()
+        assertEquals(120, first.bpm.value)
         first.release()
 
         val restored = RealMetronomeController(context, isAudioEnabled = false)

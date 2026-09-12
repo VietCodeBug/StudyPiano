@@ -80,6 +80,7 @@ class PracticePlayerViewModelRegressionTest {
         var startCalls = 0
         var stopCalls = 0
         val bpmChanges = mutableListOf<Int>()
+        val timelineBeats = mutableListOf<Triple<Int, Int, Boolean>>()
         private val _currentBeat = MutableStateFlow(1)
         override val currentBeat: StateFlow<Int> = _currentBeat.asStateFlow()
 
@@ -90,6 +91,11 @@ class PracticePlayerViewModelRegressionTest {
         override val bpm: StateFlow<Int> = _bpm.asStateFlow()
 
         override fun start(bpm: Int) { startCalls++; _isRunning.value = true; _bpm.value = bpm }
+        override fun startTimeline() { startCalls++; _isRunning.value = true }
+        override fun resetTimeline(beat: Int, bpm: Int) { _currentBeat.value = beat; _bpm.value = bpm }
+        override fun playTimelineBeat(beat: Int, bpm: Int, isMeasureStart: Boolean) {
+            _currentBeat.value = beat; _bpm.value = bpm; timelineBeats += Triple(beat, bpm, isMeasureStart)
+        }
         override fun stop() { stopCalls++; _isRunning.value = false }
         override fun setBpm(bpm: Int) { bpmChanges += bpm; _bpm.value = bpm }
     }

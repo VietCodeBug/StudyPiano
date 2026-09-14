@@ -16,6 +16,8 @@ import com.ian.pianotrainer.data.local.database.dao.SongPracticePresetDao
 import com.ian.pianotrainer.data.local.database.dao.SongTempoDao
 import com.ian.pianotrainer.data.local.database.dao.SongTimeSignatureDao
 import com.ian.pianotrainer.data.local.database.dao.SongTrackDao
+import com.ian.pianotrainer.data.local.database.dao.SongAssetDao
+import com.ian.pianotrainer.data.local.database.dao.RestoreCommitDao
 import com.ian.pianotrainer.data.local.database.entity.FreePlayRecordedEventEntity
 import com.ian.pianotrainer.data.local.database.entity.FreePlayRecordingEntity
 import com.ian.pianotrainer.data.local.database.entity.ImportedSongEntity
@@ -27,6 +29,8 @@ import com.ian.pianotrainer.data.local.database.entity.SongPracticePresetEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTempoEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTimeSignatureEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
+import com.ian.pianotrainer.data.local.database.entity.SongAssetEntity
+import com.ian.pianotrainer.data.local.database.entity.RestoreCommitEntity
 
 @Database(
     entities = [
@@ -40,9 +44,11 @@ import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
         PracticeNoteResultEntity::class,
         FreePlayRecordingEntity::class,
         FreePlayRecordedEventEntity::class,
-        SongPracticePresetEntity::class
+        SongPracticePresetEntity::class,
+        SongAssetEntity::class,
+        RestoreCommitEntity::class
     ],
-    version = 5,
+    version = 7,
     exportSchema = true
 )
 abstract class PianoTrainerDatabase : RoomDatabase() {
@@ -56,6 +62,8 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
     abstract fun practiceNoteResultDao(): PracticeNoteResultDao
     abstract fun freePlayRecordingDao(): FreePlayRecordingDao
     abstract fun songPracticePresetDao(): SongPracticePresetDao
+    abstract fun songAssetDao(): SongAssetDao
+    abstract fun restoreCommitDao(): RestoreCommitDao
 
     companion object {
         const val DATABASE_NAME = "piano_trainer.db"
@@ -244,6 +252,43 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS song_assets (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        songId TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        originalFileName TEXT NOT NULL,
+                        localFilePath TEXT NOT NULL,
+                        fileSizeBytes INTEGER NOT NULL,
+                        mimeType TEXT,
+                        FOREIGN KEY(songId) REFERENCES imported_songs(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_song_assets_songId ON song_assets(songId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_song_assets_songId_type ON song_assets(songId, type)")
+                db.execSQL(
+                    """
+                    INSERT OR IGNORE INTO song_assets
+                        (id, songId, type, originalFileName, localFilePath, fileSizeBytes, mimeType)
+                    SELECT id || '_midi', id, 'MIDI', originalFileName, localFilePath,
+                           COALESCE(fileSizeBytes, 0), 'audio/midi'
+                    FROM imported_songs
+                    WHERE localFilePath IS NOT NULL AND TRIM(localFilePath) != ''
+                    """.trimIndent()
+                )
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS restore_commits (operationId TEXT PRIMARY KEY NOT NULL, committedAt INTEGER NOT NULL)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: PianoTrainerDatabase? = null
 
@@ -254,7 +299,7 @@ abstract class PianoTrainerDatabase : RoomDatabase() {
                     PianoTrainerDatabase::class.java,
                     DATABASE_NAME
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
                 INSTANCE = instance
                 instance

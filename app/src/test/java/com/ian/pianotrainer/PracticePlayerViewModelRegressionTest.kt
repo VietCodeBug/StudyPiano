@@ -77,6 +77,10 @@ class PracticePlayerViewModelRegressionTest {
     }
 
     private class FakeMetronome : MetronomeController {
+        var startCalls = 0
+        var stopCalls = 0
+        val bpmChanges = mutableListOf<Int>()
+        val timelineBeats = mutableListOf<Triple<Int, Int, Boolean>>()
         private val _currentBeat = MutableStateFlow(1)
         override val currentBeat: StateFlow<Int> = _currentBeat.asStateFlow()
 
@@ -86,9 +90,14 @@ class PracticePlayerViewModelRegressionTest {
         private val _bpm = MutableStateFlow(60)
         override val bpm: StateFlow<Int> = _bpm.asStateFlow()
 
-        override fun start(bpm: Int) { _isRunning.value = true; _bpm.value = bpm }
-        override fun stop() { _isRunning.value = false }
-        override fun setBpm(bpm: Int) { _bpm.value = bpm }
+        override fun start(bpm: Int) { startCalls++; _isRunning.value = true; _bpm.value = bpm }
+        override fun startTimeline() { startCalls++; _isRunning.value = true }
+        override fun resetTimeline(beat: Int, bpm: Int) { _currentBeat.value = beat; _bpm.value = bpm }
+        override fun playTimelineBeat(beat: Int, bpm: Int, isMeasureStart: Boolean) {
+            _currentBeat.value = beat; _bpm.value = bpm; timelineBeats += Triple(beat, bpm, isMeasureStart)
+        }
+        override fun stop() { stopCalls++; _isRunning.value = false }
+        override fun setBpm(bpm: Int) { bpmChanges += bpm; _bpm.value = bpm }
     }
 
     private class FakeAudioEngine : PianoAudioEngine {
@@ -218,7 +227,7 @@ class PracticePlayerViewModelRegressionTest {
             ),
             notes = notes,
             tracks = emptyList(),
-            tempos = listOf(SongTempoInfo(0L, 0L, 1_000_000L, 60)),
+            tempos = listOf(SongTempoInfo(0L, 0L, 1_000_000L, 60), SongTempoInfo(1920L, 4000L, 500_000L, 120)),
             timeSignatures = listOf(SongTimeSignature(0L, 0L, 4, 4))
         )
 
@@ -268,12 +277,21 @@ class PracticePlayerViewModelRegressionTest {
 
             // 4. Change Speed to 0.75x
             viewModel.setPlaybackSpeed(0.75f)
+            assertEquals(90, metronome.bpm.value)
 
             // 5. Pause -> Resume -> Restart
             viewModel.togglePause()
             assertTrue(practiceEngine.state.value.isPaused)
+            assertTrue(!metronome.isRunning.value)
 
             viewModel.togglePause()
+            assertTrue(metronome.isRunning.value)
+            assertEquals(90, metronome.bpm.value)
+            viewModel.seekTo(0L)
+            assertEquals(45, metronome.bpm.value)
+            viewModel.setPracticeMode(PracticeMode.WAIT_FOR_NOTE)
+            assertTrue(!metronome.isRunning.value)
+            viewModel.setPracticeMode(PracticeMode.RHYTHM)
             viewModel.restart()
 
             // Verify: Section 2 is still selected, restart position is sec2.startMs (not 0L)

@@ -9,6 +9,8 @@ import com.ian.pianotrainer.data.repository.InvalidMidiFileException
 import com.ian.pianotrainer.data.repository.MidiFileTooLargeException
 import com.ian.pianotrainer.data.repository.SongRepositoryImpl
 import com.ian.pianotrainer.domain.model.HandMode
+import com.ian.pianotrainer.domain.model.PendingSongAsset
+import com.ian.pianotrainer.domain.model.SongAssetType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -278,6 +280,65 @@ class SongRepositoryUnitTest {
         assertTrue(db.songTimeSignatureDao().getTimeSignaturesForSong(songId).isEmpty())
         assertFalse(localFile.exists())
     }
+
+    @Test
+    fun packageAssets_persistAcrossDatabaseReopen_andDeleteWithOwner() = runTest {
+        val databaseName = "asset-reopen-${System.nanoTime()}.db"
+        context.deleteDatabase(databaseName)
+        val xml = File(context.cacheDir, "asset-${System.nanoTime()}.musicxml").apply {
+            writeText("""<score-partwise version="4.0"><part-list/></score-partwise>""")
+        }
+        val audio = File(context.cacheDir, "asset-${System.nanoTime()}.ogg").apply { writeBytes("OggSfixture".toByteArray()) }
+        var fileDb = Room.databaseBuilder(context, PianoTrainerDatabase::class.java, databaseName)
+            .allowMainThreadQueries().build()
+        var fileRepo = repositoryFor(fileDb)
+        try {
+            val imported = fileRepo.importSongPackage(
+                ByteArrayInputStream(createSampleMidiBytes(67)), "bundle.mid", createSampleMidiBytes(67).size.toLong(), "Bundle",
+                listOf(
+                    PendingSongAsset(SongAssetType.MUSICXML, "score.musicxml", xml.absolutePath, xml.length(), "application/vnd.recordare.musicxml+xml"),
+                    PendingSongAsset(SongAssetType.REFERENCE_AUDIO, "ref.ogg", audio.absolutePath, audio.length(), "audio/ogg")
+                )
+            ).getOrThrow()
+            assertEquals(3, imported.assets.size)
+            assertTrue(imported.assets.all { it.songId == imported.id && File(it.localFilePath).exists() })
+
+            fileDb.close()
+            fileDb = Room.databaseBuilder(context, PianoTrainerDatabase::class.java, databaseName)
+                .allowMainThreadQueries().build()
+            fileRepo = repositoryFor(fileDb)
+            val reopened = fileRepo.getSongById(imported.id)
+            assertNotNull(reopened)
+            assertEquals(3, reopened!!.assets.size)
+            assertEquals(setOf(SongAssetType.MIDI, SongAssetType.MUSICXML, SongAssetType.REFERENCE_AUDIO), reopened.assets.map { it.type }.toSet())
+
+            fileRepo.deleteSong(imported.id)
+            assertNull(fileRepo.getSongById(imported.id))
+            assertTrue(reopened.assets.none { File(it.localFilePath).exists() })
+        } finally {
+            if (fileDb.isOpen) fileDb.close()
+            xml.delete(); audio.delete(); context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
+    fun packagePersistenceFailure_leavesNoSongOrOwnedDirectory() = runTest {
+        val before = File(context.filesDir, "songs").listFiles().orEmpty().map { it.name }.toSet()
+        val missing = File(context.cacheDir, "does-not-exist-${System.nanoTime()}.xml")
+        val result = repository.importSongPackage(
+            ByteArrayInputStream(createSampleMidiBytes()), "broken.mid", createSampleMidiBytes().size.toLong(), "Broken",
+            listOf(PendingSongAsset(SongAssetType.MUSICXML, "missing.musicxml", missing.absolutePath, 12L))
+        )
+        assertTrue(result.isFailure)
+        assertTrue(repository.getAllSongsList().isEmpty())
+        val after = File(context.filesDir, "songs").listFiles().orEmpty().map { it.name }.toSet()
+        assertEquals(before, after)
+    }
+
+    private fun repositoryFor(database: PianoTrainerDatabase) = SongRepositoryImpl(
+        context, database, database.importedSongDao(), database.songTrackDao(), database.songNoteDao(),
+        database.songTempoDao(), database.songTimeSignatureDao()
+    )
 
     @Test
     fun updateTrackConfigurations_updatesAssignedHand() = runTest {

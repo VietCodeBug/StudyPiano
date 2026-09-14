@@ -3,18 +3,20 @@ package com.ian.pianotrainer.core.contentpack
 import android.content.Context
 import android.util.Log
 import com.ian.pianotrainer.domain.repository.SongRepository
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 
 class OnlineSongDownloader(
-    @Suppress("UNUSED_PARAMETER") context: Context,
+    private val context: Context,
     private val songRepository: SongRepository,
     private val contentPackImporter: ContentPackImporter
 ) {
@@ -65,13 +67,13 @@ class OnlineSongDownloader(
         val normalizedUrl = normalizeDirectUrl(input)
             ?: return@withContext failure("Liên kết không hợp lệ. Chỉ hỗ trợ URL http/https tới tệp MIDI hoặc PianoPack.")
 
+        val tempFile = File(context.cacheDir, "song_download_${java.util.UUID.randomUUID()}.tmp")
         try {
-            val response = download(normalizedUrl)
-            val bytes = response.bytes
-            if (bytes.isEmpty()) return@withContext failure("Tệp tải về không có dữ liệu.")
+            val response = download(normalizedUrl, tempFile)
+            if (response.file.length() == 0L) return@withContext failure("Tệp tải về không có dữ liệu.")
 
-            val isZip = bytes.hasPrefix(0x50, 0x4B, 0x03, 0x04)
-            val isMidi = bytes.hasPrefix(0x4D, 0x54, 0x68, 0x64) // MThd
+            val isZip = response.file.hasPrefix(0x50, 0x4B, 0x03, 0x04)
+            val isMidi = response.file.hasPrefix(0x4D, 0x54, 0x68, 0x64) // MThd
             if (!isZip && !isMidi) {
                 return@withContext failure(
                     "Liên kết không trả về tệp MIDI/PianoPack. Nếu đây là trang web, hãy tìm nút tải MIDI trực tiếp."
@@ -84,17 +86,19 @@ class OnlineSongDownloader(
 
             if (isZip) {
                 return@withContext contentPackImporter.importPack(
-                    inputStream = ByteArrayInputStream(bytes),
+                    inputStream = FileInputStream(response.file),
                     defaultTitle = inferredTitle
                 )
             }
 
-            val importResult = songRepository.importMidiFile(
-                inputStream = ByteArrayInputStream(bytes),
-                originalFileName = inferredFileName.ensureMidiExtension(),
-                fileSize = bytes.size.toLong(),
-                customTitle = inferredTitle
-            )
+            val importResult = FileInputStream(response.file).use { stream ->
+                songRepository.importMidiFile(
+                    inputStream = stream,
+                    originalFileName = inferredFileName.ensureMidiExtension(),
+                    fileSize = response.file.length(),
+                    customTitle = inferredTitle
+                )
+            }
             val imported = importResult.getOrNull()
             if (imported != null) {
                 ContentPackImportResult(
@@ -110,9 +114,13 @@ class OnlineSongDownloader(
             }
         } catch (error: DownloadException) {
             failure(error.message ?: "Không thể tải bài nhạc.")
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             Log.e(TAG, "Download error", error)
             failure("Lỗi kết nối khi tải bài: ${error.localizedMessage ?: "không rõ nguyên nhân"}")
+        } finally {
+            tempFile.delete()
         }
     }
 
@@ -132,7 +140,7 @@ class OnlineSongDownloader(
         return parsed.toASCIIString()
     }
 
-    private fun download(initialUrl: String): DownloadResponse {
+    private fun download(initialUrl: String, target: File): DownloadResponse {
         var currentUrl = initialUrl
         repeat(MAX_REDIRECTS + 1) { redirectCount ->
             val connection = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
@@ -159,20 +167,21 @@ class OnlineSongDownloader(
                     throw DownloadException("Tệp lớn hơn giới hạn 25 MB.")
                 }
 
-                val output = ByteArrayOutputStream()
-                connection.inputStream.use { inputStream ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    var total = 0
-                    while (true) {
-                        val read = inputStream.read(buffer)
-                        if (read < 0) break
-                        total += read
-                        if (total > MAX_DOWNLOAD_BYTES) throw DownloadException("Tệp lớn hơn giới hạn 25 MB.")
-                        output.write(buffer, 0, read)
+                FileOutputStream(target).use { output ->
+                    connection.inputStream.use { inputStream ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var total = 0L
+                        while (true) {
+                            val read = inputStream.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > MAX_DOWNLOAD_BYTES) throw DownloadException("Tệp lớn hơn giới hạn 25 MB.")
+                            output.write(buffer, 0, read)
+                        }
                     }
                 }
                 return DownloadResponse(
-                    bytes = output.toByteArray(),
+                    file = target,
                     finalUrl = currentUrl,
                     fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
                 )
@@ -205,13 +214,15 @@ class OnlineSongDownloader(
     private fun String.ensureMidiExtension(): String =
         if (lowercase().endsWith(".mid") || lowercase().endsWith(".midi")) this else "$this.mid"
 
-    private fun ByteArray.hasPrefix(vararg expected: Int): Boolean =
-        size >= expected.size && expected.indices.all { this[it].toInt() and 0xFF == expected[it] }
+    private fun File.hasPrefix(vararg expected: Int): Boolean = inputStream().use { input ->
+        val bytes = ByteArray(expected.size)
+        input.read(bytes) == expected.size && expected.indices.all { bytes[it].toInt() and 0xFF == expected[it] }
+    }
 
     private fun failure(message: String) = ContentPackImportResult(isSuccess = false, errorMessage = message)
 
     private data class DownloadResponse(
-        val bytes: ByteArray,
+        val file: File,
         val finalUrl: String,
         val fileName: String?
     )

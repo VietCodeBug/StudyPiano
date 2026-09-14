@@ -58,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoBackground
 import com.ian.pianotrainer.core.designsystem.PianoError
@@ -83,6 +87,7 @@ import com.ian.pianotrainer.core.designsystem.PianoSurface
 import com.ian.pianotrainer.core.designsystem.PianoSurfaceVariant
 import com.ian.pianotrainer.core.designsystem.PianoTextPrimary
 import com.ian.pianotrainer.core.designsystem.PianoTextSecondary
+import com.ian.pianotrainer.core.ui.MetronomeControlPanel
 import com.ian.pianotrainer.core.music.NoteHelper
 import com.ian.pianotrainer.core.ui.ForceLandscapeWhileVisible
 import com.ian.pianotrainer.domain.model.FreePlayRecording
@@ -101,12 +106,18 @@ fun FreePlayScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
     var showRecordingsSheet by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var recordingTitleInput by remember { mutableStateOf("") }
 
     // Enforce landscape layout
     ForceLandscapeWhileVisible()
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) viewModel.onBackgroundPause() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer); viewModel.onBackgroundPause() }
+    }
 
     // BackHandler when recording
     BackHandler(enabled = true) {
@@ -200,6 +211,12 @@ fun FreePlayScreen(
             onOctaveChange = viewModel::setOctave,
             onBpmChange = viewModel::setBpm,
             onMetronomeToggle = viewModel::toggleMetronome,
+            onTapTempo = viewModel::tapTempo,
+            onMetronomeBeats = viewModel::setMetronomeBeats,
+            onMetronomeAccent = viewModel::setMetronomeAccent,
+            onMetronomeSound = viewModel::setMetronomeSound,
+            onMetronomeVolume = viewModel::setMetronomeVolume,
+            onMetronomePreview = viewModel::previewMetronome,
             onAudioRecordingToggle = viewModel::setAudioRecordingEnabled
         )
     }
@@ -563,6 +580,12 @@ fun FreePlaySettingsBottomSheet(
     onOctaveChange: (Int) -> Unit,
     onBpmChange: (Int) -> Unit,
     onMetronomeToggle: () -> Unit,
+    onTapTempo: () -> Unit,
+    onMetronomeBeats: (Int) -> Unit,
+    onMetronomeAccent: (Boolean) -> Unit,
+    onMetronomeSound: (com.ian.pianotrainer.domain.service.MetronomeSound) -> Unit,
+    onMetronomeVolume: (Float) -> Unit,
+    onMetronomePreview: () -> Unit,
     onAudioRecordingToggle: (Boolean) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -594,6 +617,25 @@ fun FreePlaySettingsBottomSheet(
                     Icon(imageVector = Icons.Default.Close, contentDescription = "Đóng", tint = PianoTextSecondary)
                 }
             }
+
+            MetronomeControlPanel(
+                running = uiState.isMetronomeRunning,
+                bpm = uiState.bpm,
+                currentBeat = uiState.currentBeat,
+                beatsPerBar = uiState.beatsPerBar,
+                accentEnabled = uiState.accentEnabled,
+                sound = uiState.metronomeSound,
+                volume = uiState.metronomeVolume,
+                waitMode = false,
+                onToggle = onMetronomeToggle,
+                onBpm = onBpmChange,
+                onTap = onTapTempo,
+                onBeats = onMetronomeBeats,
+                onAccent = onMetronomeAccent,
+                onSound = onMetronomeSound,
+                onVolume = onMetronomeVolume,
+                onPreview = onMetronomePreview
+            )
 
             // Keyboard Range
             Text(

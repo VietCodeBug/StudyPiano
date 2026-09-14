@@ -3,6 +3,8 @@ package com.ian.pianotrainer.domain.repository
 import com.ian.pianotrainer.data.local.database.entity.SongNoteEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
 import com.ian.pianotrainer.domain.model.ImportedSong
+import com.ian.pianotrainer.domain.model.PendingSongAsset
+import com.ian.pianotrainer.domain.model.SongAsset
 import com.ian.pianotrainer.domain.model.SongPlaybackData
 import com.ian.pianotrainer.domain.model.SongPracticePreset
 import com.ian.pianotrainer.domain.model.SongTimeSignature
@@ -24,6 +26,14 @@ interface SongRepository {
         fileSize: Long,
         customTitle: String? = null
     ): Result<ImportedSong>
+    suspend fun importSongPackage(
+        inputStream: InputStream,
+        originalFileName: String,
+        fileSize: Long,
+        customTitle: String? = null,
+        additionalAssets: List<PendingSongAsset>
+    ): Result<ImportedSong> = importMidiFile(inputStream, originalFileName, fileSize, customTitle)
+    suspend fun getSongAssets(songId: String): List<SongAsset> = emptyList()
     suspend fun updateTrackConfigurations(songId: String, tracks: List<SongTrackEntity>)
     suspend fun renameSong(id: String, newName: String)
     suspend fun toggleFavorite(id: String)

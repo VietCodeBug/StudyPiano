@@ -15,12 +15,16 @@ import com.ian.pianotrainer.data.local.database.entity.SongNoteEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTempoEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTimeSignatureEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
+import com.ian.pianotrainer.data.local.database.entity.SongAssetEntity
 import com.ian.pianotrainer.data.local.database.entity.toDomain
 import com.ian.pianotrainer.data.local.database.entity.toDomainModel
 import com.ian.pianotrainer.data.local.database.entity.toEntity
 import com.ian.pianotrainer.domain.model.ExerciseNote
 import com.ian.pianotrainer.domain.model.HandMode
 import com.ian.pianotrainer.domain.model.ImportedSong
+import com.ian.pianotrainer.domain.model.PendingSongAsset
+import com.ian.pianotrainer.domain.model.SongAsset
+import com.ian.pianotrainer.domain.model.SongAssetType
 import com.ian.pianotrainer.domain.model.SongPlaybackData
 import com.ian.pianotrainer.domain.model.SongPracticePreset
 import com.ian.pianotrainer.domain.model.SongTempoInfo
@@ -34,9 +38,34 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+
+internal val SONG_FILE_OPERATION_MUTEX = Mutex()
+
+enum class SongOperationCheckpoint {
+    IMPORT_FILES_PROMOTED, IMPORT_DB_COMMITTED, DELETE_FILES_STAGED, DELETE_DB_COMMITTED, DELETE_BEFORE_ROLLBACK
+}
+
+fun interface SongOperationFaultInjector {
+    fun onCheckpoint(checkpoint: SongOperationCheckpoint, songId: String)
+
+    companion object { val NONE = SongOperationFaultInjector { _, _ -> } }
+}
+
+fun interface SongFileRenamer {
+    fun rename(source: File, target: File): Boolean
+
+    companion object { val DEFAULT = SongFileRenamer { source, target -> source.renameTo(target) } }
+}
 
 class SongRepositoryImpl(
     private val context: Context,
@@ -45,7 +74,9 @@ class SongRepositoryImpl(
     private val songTrackDao: SongTrackDao,
     private val songNoteDao: SongNoteDao,
     private val songTempoDao: SongTempoDao,
-    private val songTimeSignatureDao: SongTimeSignatureDao
+    private val songTimeSignatureDao: SongTimeSignatureDao,
+    private val faultInjector: SongOperationFaultInjector = SongOperationFaultInjector.NONE,
+    private val fileRenamer: SongFileRenamer = SongFileRenamer.DEFAULT
 ) : SongRepository {
 
     companion object {
@@ -53,14 +84,22 @@ class SongRepositoryImpl(
     }
 
     override fun getAllSongs(): Flow<List<ImportedSong>> {
-        return importedSongDao.getAllSongs().map { list ->
-            list.map { it.toDomainModel() }
+        return flow {
+            SONG_FILE_OPERATION_MUTEX.withLock { recoverFileOperations() }
+            emitAll(combine(importedSongDao.getAllSongs(), database.songAssetDao().getAllAssets()) { songs, assets ->
+            val bySong = assets.groupBy { it.songId }
+            songs.map { song -> song.toDomainModel().copy(assets = bySong[song.id].orEmpty().map { it.toDomainModel() }) }
+            })
         }
     }
 
     override fun getFavoriteSongs(): Flow<List<ImportedSong>> {
-        return importedSongDao.getFavoriteSongs().map { list ->
-            list.map { it.toDomainModel() }
+        return flow {
+            SONG_FILE_OPERATION_MUTEX.withLock { recoverFileOperations() }
+            emitAll(combine(importedSongDao.getFavoriteSongs(), database.songAssetDao().getAllAssets()) { songs, assets ->
+            val bySong = assets.groupBy { it.songId }
+            songs.map { song -> song.toDomainModel().copy(assets = bySong[song.id].orEmpty().map { it.toDomainModel() }) }
+            })
         }
     }
 
@@ -91,7 +130,10 @@ class SongRepositoryImpl(
             )
         }
 
-        songEntity.toDomainModel().copy(notes = exerciseNotes)
+        songEntity.toDomainModel().copy(
+            notes = exerciseNotes,
+            assets = database.songAssetDao().getAssetsForSong(id).map { it.toDomainModel() }
+        )
     }
 
     override suspend fun getSongPlaybackData(id: String): SongPlaybackData? = withContext(Dispatchers.IO) {
@@ -145,7 +187,32 @@ class SongRepositoryImpl(
         originalFileName: String,
         fileSize: Long,
         customTitle: String?
-    ): Result<ImportedSong> = withContext(Dispatchers.IO) {
+    ): Result<ImportedSong> = importMidiWithAssets(
+        inputStream, originalFileName, fileSize, customTitle, emptyList()
+    )
+
+    override suspend fun importSongPackage(
+        inputStream: InputStream,
+        originalFileName: String,
+        fileSize: Long,
+        customTitle: String?,
+        additionalAssets: List<PendingSongAsset>
+    ): Result<ImportedSong> = importMidiWithAssets(
+        inputStream, originalFileName, fileSize, customTitle, additionalAssets
+    )
+
+    override suspend fun getSongAssets(songId: String): List<SongAsset> = withContext(Dispatchers.IO) {
+        database.songAssetDao().getAssetsForSong(songId).map { it.toDomainModel() }
+    }
+
+    private suspend fun importMidiWithAssets(
+        inputStream: InputStream,
+        originalFileName: String,
+        fileSize: Long,
+        customTitle: String?,
+        additionalAssets: List<PendingSongAsset>
+    ): Result<ImportedSong> = withContext(Dispatchers.IO) { SONG_FILE_OPERATION_MUTEX.withLock {
+        recoverFileOperations()
         // 1. Initial size check from metadata provider
         if (fileSize > MAX_MIDI_FILE_SIZE_BYTES) {
             return@withContext Result.failure(
@@ -155,6 +222,8 @@ class SongRepositoryImpl(
 
         val tempFile = File(context.cacheDir, "midi_import_${UUID.randomUUID()}.tmp")
         var targetSongDir: File? = null
+        var operationDir: File? = null
+        var importingSongId: String? = null
 
         try {
             // 2. Stream chunk-by-chunk to temporary file with size counting & SHA-256 hashing
@@ -196,14 +265,51 @@ class SongRepositoryImpl(
             }
 
             val songId = "song_" + UUID.randomUUID().toString().replace("-", "").take(12)
-            val songsDir = File(context.filesDir, "songs/$songId")
-            if (!songsDir.exists()) {
-                songsDir.mkdirs()
-            }
-            targetSongDir = songsDir
+            importingSongId = songId
+            val finalSongDir = File(context.filesDir, "songs/$songId")
+            val opDir = File(context.filesDir, "song_operations/import_${songId}_${UUID.randomUUID()}").apply { mkdirs() }
+            operationDir = opDir
+            File(opDir, "operation.properties").writeText("kind=IMPORT\nsongId=$songId\n")
+            val songsDir = File(opDir, "payload").apply { mkdirs() }
 
             val destinationFile = File(songsDir, "source.mid")
             tempFile.copyTo(destinationFile, overwrite = true)
+
+            if (additionalAssets.any { it.type == SongAssetType.MIDI } ||
+                additionalAssets.map { it.type }.distinct().size != additionalAssets.size) {
+                throw MidiImportPersistenceException("Gói bài hát khai báo loại tài nguyên bị trùng.")
+            }
+            val assetEntities = mutableListOf(
+                SongAssetEntity(
+                    id = "${songId}_midi",
+                    songId = songId,
+                    type = SongAssetType.MIDI.name,
+                    originalFileName = originalFileName.safeAssetName(),
+                    localFilePath = File(finalSongDir, destinationFile.name).absolutePath,
+                    fileSizeBytes = totalBytesRead,
+                    mimeType = "audio/midi"
+                )
+            )
+            additionalAssets.forEach { pending ->
+                val source = File(pending.stagedFilePath)
+                if (!source.isFile || source.length() != pending.fileSizeBytes) {
+                    throw MidiImportPersistenceException("Tài nguyên '${pending.originalFileName}' không còn hợp lệ trong vùng tạm.")
+                }
+                val extension = pending.originalFileName.substringAfterLast('.', "").lowercase()
+                    .takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
+                val baseName = if (pending.type == SongAssetType.MUSICXML) "sheet" else "reference"
+                val destination = File(songsDir, if (extension == null) baseName else "$baseName.$extension")
+                source.copyTo(destination, overwrite = false)
+                assetEntities += SongAssetEntity(
+                    id = "${songId}_${pending.type.name.lowercase()}",
+                    songId = songId,
+                    type = pending.type.name,
+                    originalFileName = pending.originalFileName.safeAssetName(),
+                    localFilePath = File(finalSongDir, destination.name).absolutePath,
+                    fileSizeBytes = destination.length(),
+                    mimeType = pending.mimeType
+                )
+            }
 
             val totalNotesCount = parsedMidi.tracks.sumOf { it.noteCount }
             val cleanTitle = customTitle?.takeIf { it.isNotBlank() }
@@ -220,7 +326,7 @@ class SongRepositoryImpl(
                 id = songId,
                 displayName = cleanTitle,
                 originalFileName = originalFileName,
-                localFilePath = destinationFile.absolutePath,
+                localFilePath = File(finalSongDir, destinationFile.name).absolutePath,
                 fileHashSha256 = fileHash,
                 fileSizeBytes = totalBytesRead,
                 midiFormatType = parsedMidi.format,
@@ -293,10 +399,15 @@ class SongRepositoryImpl(
                 )
             }
 
-            // 5. Atomic Room database transaction
+            finalSongDir.parentFile?.mkdirs()
+            if (!fileRenamer.rename(songsDir, finalSongDir)) throw MidiImportPersistenceException("Không thể đưa tệp bài hát vào vùng lưu chính thức.")
+            targetSongDir = finalSongDir
+            faultInjector.onCheckpoint(SongOperationCheckpoint.IMPORT_FILES_PROMOTED, songId)
+            // 5. Atomic Room database transaction. Journal remains durable until commit is known complete.
             try {
                 database.withTransaction {
                     importedSongDao.insertSong(songEntity)
+                    database.songAssetDao().insertAssets(assetEntities)
                     songTrackDao.insertTracks(trackEntities)
                     songNoteDao.insertNotes(noteEntities)
                     songTempoDao.insertTempos(tempoEntities)
@@ -306,16 +417,29 @@ class SongRepositoryImpl(
                 throw MidiImportPersistenceException("Lỗi lưu trữ dữ liệu bài hát vào database: ${e.message}", e)
             }
 
-            Result.success(songEntity.toDomainModel())
+            faultInjector.onCheckpoint(SongOperationCheckpoint.IMPORT_DB_COMMITTED, songId)
+
+            operationDir?.deleteRecursively()
+
+            Result.success(songEntity.toDomainModel().copy(assets = assetEntities.map { it.toDomainModel() }))
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                val committed = importingSongId?.let { importedSongDao.getSongById(it) } != null
+                if (!committed) targetSongDir?.deleteRecursively()
+                if (!committed || targetSongDir?.exists() == true) operationDir?.deleteRecursively()
+            }
+            throw e
         } catch (e: Exception) {
-            targetSongDir?.deleteRecursively()
+            val committed = importingSongId?.let { importedSongDao.getSongById(it) } != null
+            if (!committed) targetSongDir?.deleteRecursively()
+            if (!committed || targetSongDir?.exists() == true) operationDir?.deleteRecursively()
             Result.failure(e)
         } finally {
             if (tempFile.exists()) {
                 tempFile.delete()
             }
         }
-    }
+    } }
 
     override suspend fun updateTrackConfigurations(songId: String, tracks: List<SongTrackEntity>) = withContext(Dispatchers.IO) {
         database.withTransaction {
@@ -345,15 +469,26 @@ class SongRepositoryImpl(
         importedSongDao.updateSong(updated)
     }
 
-    override suspend fun deleteSong(id: String) = withContext(Dispatchers.IO) {
-        database.withTransaction {
-            importedSongDao.deleteSongById(id)
-        }
+    override suspend fun deleteSong(id: String) = withContext(Dispatchers.IO) { SONG_FILE_OPERATION_MUTEX.withLock {
+        recoverFileOperations()
         val songsDir = File(context.filesDir, "songs/$id")
-        if (songsDir.exists()) {
-            songsDir.deleteRecursively()
+        val operationDir = File(context.filesDir, "song_operations/delete_${id}_${UUID.randomUUID()}").apply { mkdirs() }
+        File(operationDir, "operation.properties").writeText("kind=DELETE\nsongId=$id\n")
+        val tombstone = File(operationDir, "payload")
+        val moved = !songsDir.exists() || fileRenamer.rename(songsDir, tombstone)
+        if (!moved) throw IllegalStateException("Không thể chuẩn bị xóa tệp của bài hát.")
+        try {
+            faultInjector.onCheckpoint(SongOperationCheckpoint.DELETE_FILES_STAGED, id)
+            database.withTransaction { importedSongDao.deleteSongById(id) }
+            faultInjector.onCheckpoint(SongOperationCheckpoint.DELETE_DB_COMMITTED, id)
+            operationDir.deleteRecursively()
+        } catch (error: Throwable) {
+            withContext(NonCancellable) { reconcileInterruptedDelete(id, songsDir, tombstone, operationDir) }
+            if (error is CancellationException) throw error
+            throw error
         }
-    }
+        Unit
+    } }
 
     override suspend fun updateLastPracticed(id: String) = withContext(Dispatchers.IO) {
         val song = importedSongDao.getSongById(id) ?: return@withContext
@@ -362,7 +497,60 @@ class SongRepositoryImpl(
     }
 
     override suspend fun getAllSongsList(): List<ImportedSong> = withContext(Dispatchers.IO) {
-        importedSongDao.getAllSongsList().map { it.toDomainModel() }
+        SONG_FILE_OPERATION_MUTEX.withLock { recoverFileOperations() }
+        importedSongDao.getAllSongsList().map { entity ->
+            entity.toDomainModel().copy(assets = database.songAssetDao().getAssetsForSong(entity.id).map { it.toDomainModel() })
+        }
+    }
+
+    private fun String.safeAssetName(): String = substringAfterLast('/').substringAfterLast('\\').take(255)
+
+    private suspend fun reconcileInterruptedDelete(id: String, finalDir: File, payload: File, operationDir: File) {
+        if (importedSongDao.getSongById(id) == null) {
+            operationDir.deleteRecursively()
+            return
+        }
+        if (finalDir.exists()) {
+            operationDir.deleteRecursively()
+            return
+        }
+        faultInjector.onCheckpoint(SongOperationCheckpoint.DELETE_BEFORE_ROLLBACK, id)
+        finalDir.parentFile?.mkdirs()
+        if (!payload.exists() || !fileRenamer.rename(payload, finalDir) || !finalDir.exists()) {
+            throw IllegalStateException("Không thể khôi phục tệp sau khi xóa DB thất bại; journal được giữ để recovery thử lại.")
+        }
+        operationDir.deleteRecursively()
+    }
+
+    private suspend fun recoverFileOperations() {
+        val root = File(context.filesDir, "song_operations")
+        root.listFiles()?.filter { it.isDirectory }?.forEach { op ->
+            if (op.name.startsWith("restore_")) {
+                RestoreOperationRecovery(context, database, fileRenamer).reconcile(op)
+                return@forEach
+            }
+            val values = File(op, "operation.properties").takeIf { it.isFile }?.readLines()
+                ?.mapNotNull { line -> line.indexOf('=').takeIf { it > 0 }?.let { line.substring(0, it) to line.substring(it + 1) } }
+                ?.toMap().orEmpty()
+            val kind = values["kind"]
+            val songId = values["songId"]?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,80}")) } ?: return@forEach
+            val payload = File(op, "payload")
+            val finalDir = File(context.filesDir, "songs/$songId")
+            val existsInDb = importedSongDao.getSongById(songId) != null
+            when (kind) {
+                "IMPORT" -> if (existsInDb) {
+                    if (!finalDir.exists() && payload.exists()) fileRenamer.rename(payload, finalDir)
+                    if (finalDir.exists()) op.deleteRecursively()
+                } else {
+                    if (finalDir.exists()) finalDir.deleteRecursively()
+                    op.deleteRecursively()
+                }
+                "DELETE" -> if (existsInDb) {
+                    if (!finalDir.exists() && payload.exists()) fileRenamer.rename(payload, finalDir)
+                    if (finalDir.exists()) op.deleteRecursively()
+                } else op.deleteRecursively()
+            }
+        }
     }
 
     override fun getPracticePresets(songId: String): Flow<List<SongPracticePreset>> {

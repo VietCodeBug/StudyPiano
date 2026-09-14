@@ -8,17 +8,30 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ian.pianotrainer.core.contentpack.CatalogSongItem
 import com.ian.pianotrainer.core.contentpack.OnlineSongCatalog
+import com.ian.pianotrainer.core.contentpack.ImportFileClassifier
+import com.ian.pianotrainer.core.contentpack.ImportFileKind
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
 import com.ian.pianotrainer.domain.model.ImportedSong
 import com.ian.pianotrainer.domain.model.PracticeMode
 import com.ian.pianotrainer.domain.repository.SongRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.Collator
+import java.util.Locale
 
 enum class SongSortOption(val displayName: String) {
     RECENT_IMPORTED("Mới nhập nhất"),
@@ -31,8 +44,33 @@ data class SongPreparationState(
     val tracks: List<SongTrackEntity> = emptyList(),
     val selectedPracticeMode: PracticeMode = PracticeMode.RHYTHM,
     val customBpm: Int = 60,
-    val isLoadingTracks: Boolean = true
+    val isLoadingTracks: Boolean = true,
+    val resources: List<SongResourceState> = emptyList(),
+    val errorMessage: String? = null,
+    val isSaving: Boolean = false
 )
+
+enum class SongPendingAction { RENAME, DELETE }
+
+data class SongOperationState(
+    val pendingAction: SongPendingAction? = null,
+    val pendingSongId: String? = null,
+    val renameError: String? = null,
+    val deleteError: String? = null,
+    val urlError: String? = null
+)
+
+data class SongResourceState(
+    val type: com.ian.pianotrainer.domain.model.SongAssetType,
+    val fileName: String,
+    val isAvailable: Boolean
+)
+
+private sealed interface LibraryLoadState {
+    data object Loading : LibraryLoadState
+    data class Ready(val songs: List<ImportedSong>) : LibraryLoadState
+    data class Failed(val message: String) : LibraryLoadState
+}
 
 data class MySongsUiState(
     val songs: List<ImportedSong> = emptyList(),
@@ -43,14 +81,44 @@ data class MySongsUiState(
     val isLoading: Boolean = false,
     val isImporting: Boolean = false,
     val feedbackMessage: String? = null,
-    val errorMessage: String? = null,
+    val libraryErrorMessage: String? = null,
+    val operationErrorMessage: String? = null,
+    val operation: SongOperationState = SongOperationState(),
     val curatedCatalog: List<CatalogSongItem> = OnlineSongCatalog.curatedSongs
 )
 
+internal fun filterAndSortSongs(
+    songs: List<ImportedSong>,
+    query: String,
+    favoritesOnly: Boolean,
+    sort: SongSortOption
+): List<ImportedSong> = songs.filter { song ->
+    val matchesQuery = song.displayName.contains(query.trim(), ignoreCase = true) ||
+        song.originalFileName.contains(query.trim(), ignoreCase = true)
+    matchesQuery && (!favoritesOnly || song.isFavorite)
+}.let { filtered ->
+    when (sort) {
+        SongSortOption.RECENT_IMPORTED -> filtered.sortedByDescending { it.importedAt }
+        SongSortOption.RECENT_PRACTICED -> filtered.sortedWith(
+            compareByDescending<ImportedSong> { it.lastPracticedAt ?: Long.MIN_VALUE }
+                .thenByDescending { it.importedAt }
+        )
+        SongSortOption.TITLE_AZ -> {
+            val vietnamese = Collator.getInstance(Locale("vi", "VN")).apply {
+                strength = Collator.PRIMARY
+            }
+            filtered.sortedWith { left, right -> vietnamese.compare(left.displayName, right.displayName) }
+        }
+    }
+}
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class MySongsViewModel(
     private val songRepository: SongRepository,
     private val contentPackImporter: com.ian.pianotrainer.core.contentpack.ContentPackImporter? = null,
-    private val onlineSongDownloader: com.ian.pianotrainer.core.contentpack.OnlineSongDownloader? = null
+    private val onlineSongDownloader: com.ian.pianotrainer.core.contentpack.OnlineSongDownloader? = null,
+    private val urlDownloadAction: (suspend (String, String?) -> com.ian.pianotrainer.core.contentpack.ContentPackImportResult)? =
+        onlineSongDownloader?.let { downloader -> { url, title -> downloader.downloadAndImport(url, title) } }
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -59,21 +127,35 @@ class MySongsViewModel(
     private val _isImporting = MutableStateFlow(false)
     private val _feedbackMessage = MutableStateFlow<String?>(null)
     private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _operation = MutableStateFlow(SongOperationState())
     private val _prepState = MutableStateFlow<SongPreparationState?>(null)
+    private val _libraryRetry = MutableStateFlow(0)
+    private var preparationJob: Job? = null
+    private var lastUrlRequest: Pair<String, String?>? = null
+
+    private val libraryState = _libraryRetry.flatMapLatest {
+        songRepository.getAllSongs()
+            .map<List<ImportedSong>, LibraryLoadState> { LibraryLoadState.Ready(it) }
+            .onStart { emit(LibraryLoadState.Loading) }
+            .catch { error ->
+                if (error is CancellationException) throw error
+                emit(LibraryLoadState.Failed(error.localizedMessage ?: "Không thể đọc thư viện"))
+            }
+    }
 
     private val _filterState = combine(_searchQuery, _showFavoritesOnly, _sortOption) { query, favOnly, sort ->
         Triple(query, favOnly, sort)
     }
 
-    private val _statusState = combine(_isImporting, _feedbackMessage, _errorMessage, _prepState) { importing, feedback, error, prep ->
-        listOf(importing as Any?, feedback, error, prep)
+    private val _statusState = combine(_isImporting, _feedbackMessage, _errorMessage, _prepState, _operation) { importing, feedback, error, prep, operation ->
+        listOf(importing as Any?, feedback, error, prep, operation)
     }
 
     val uiState: StateFlow<MySongsUiState> = combine(
-        songRepository.getAllSongs(),
+        libraryState,
         _filterState,
         _statusState
-    ) { allSongs, filter, status ->
+    ) { library, filter, status ->
         val query = filter.first
         val favOnly = filter.second
         val sort = filter.third
@@ -83,22 +165,11 @@ class MySongsViewModel(
         val error = status[2] as String?
         @Suppress("UNCHECKED_CAST")
         val prep = status[3] as SongPreparationState?
+        val operation = status[4] as SongOperationState
 
-        val filtered = allSongs.filter { song ->
-            val matchesQuery = song.displayName.contains(query, ignoreCase = true) ||
-                    song.originalFileName.contains(query, ignoreCase = true)
-            val matchesFav = !favOnly || song.isFavorite
-            matchesQuery && matchesFav
-        }.let { list ->
-            when (sort) {
-                SongSortOption.RECENT_IMPORTED -> list.sortedByDescending { it.importedAt }
-                SongSortOption.RECENT_PRACTICED -> list.sortedWith(
-                    compareByDescending<ImportedSong> { it.lastPracticedAt ?: 0L }
-                        .thenByDescending { it.importedAt }
-                )
-                SongSortOption.TITLE_AZ -> list.sortedBy { it.displayName.lowercase() }
-            }
-        }
+        val allSongs = (library as? LibraryLoadState.Ready)?.songs.orEmpty()
+        val filtered = filterAndSortSongs(allSongs, query, favOnly, sort)
+        val libraryError = (library as? LibraryLoadState.Failed)?.message
 
         MySongsUiState(
             songs = filtered,
@@ -106,27 +177,18 @@ class MySongsViewModel(
             showFavoritesOnly = favOnly,
             sortOption = sort,
             prepState = prep,
-            isLoading = false,
+            isLoading = library is LibraryLoadState.Loading,
             isImporting = importing,
             feedbackMessage = feedback,
-            errorMessage = error
+            libraryErrorMessage = libraryError,
+            operationErrorMessage = error,
+            operation = operation
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = MySongsUiState(isLoading = true)
     )
-
-    init {
-        viewModelScope.launch {
-            try {
-                val currentSongs = songRepository.getAllSongsList()
-                if (currentSongs.isEmpty()) {
-                    songRepository.seedCurriculumRepertoire()
-                }
-            } catch (_: Exception) {}
-        }
-    }
 
     fun seedStarterSongs() {
         viewModelScope.launch {
@@ -160,54 +222,123 @@ class MySongsViewModel(
         _showFavoritesOnly.value = !_showFavoritesOnly.value
     }
 
+    fun retryLibrary() {
+        _libraryRetry.value += 1
+    }
+
     fun toggleFavorite(songId: String) {
         viewModelScope.launch {
-            songRepository.toggleFavorite(songId)
+            try {
+                songRepository.toggleFavorite(songId)
+                _prepState.value?.takeIf { it.song.id == songId }?.let {
+                    _prepState.value = it.copy(song = it.song.copy(isFavorite = !it.song.isFavorite))
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                showError("Không thể cập nhật yêu thích", error)
+            }
         }
     }
 
-    fun renameSong(songId: String, newName: String) {
+    fun renameSong(songId: String, newName: String, onSuccess: () -> Unit = {}) {
         val cleanName = newName.trim().take(100)
         if (cleanName.isBlank()) return
+        if (_operation.value.pendingAction != null) return
+        _operation.value = _operation.value.copy(pendingAction = SongPendingAction.RENAME, pendingSongId = songId, renameError = null)
         viewModelScope.launch {
-            songRepository.renameSong(songId, cleanName)
-            _feedbackMessage.value = "Đã cập nhật tên bài nhạc"
-            _prepState.value?.let { current ->
-                if (current.song.id == songId) {
-                    _prepState.value = current.copy(song = current.song.copy(displayName = cleanName))
+            try {
+                songRepository.renameSong(songId, cleanName)
+                _prepState.value?.let { current ->
+                    if (current.song.id == songId) {
+                        _prepState.value = current.copy(song = current.song.copy(displayName = cleanName))
+                    }
+                }
+                _feedbackMessage.value = "Đã cập nhật tên bài nhạc"
+                onSuccess()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _operation.value = _operation.value.copy(renameError = errorText("Không thể đổi tên bài", error))
+            } finally {
+                if (_operation.value.pendingAction == SongPendingAction.RENAME && _operation.value.pendingSongId == songId) {
+                    _operation.value = _operation.value.copy(pendingAction = null, pendingSongId = null)
                 }
             }
         }
     }
 
-    fun deleteSong(songId: String) {
+    fun deleteSong(songId: String, onSuccess: () -> Unit = {}) {
+        if (_operation.value.pendingAction != null) return
+        _operation.value = _operation.value.copy(pendingAction = SongPendingAction.DELETE, pendingSongId = songId, deleteError = null)
         viewModelScope.launch {
-            songRepository.deleteSong(songId)
-            _feedbackMessage.value = "Đã xóa bài nhạc khỏi thư viện"
-            if (_prepState.value?.song?.id == songId) {
-                _prepState.value = null
+            try {
+                songRepository.deleteSong(songId)
+                _feedbackMessage.value = "Đã xóa bài nhạc khỏi thư viện"
+                if (_prepState.value?.song?.id == songId) _prepState.value = null
+                onSuccess()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _operation.value = _operation.value.copy(deleteError = errorText("Không thể xóa bài", error))
+            } finally {
+                if (_operation.value.pendingAction == SongPendingAction.DELETE && _operation.value.pendingSongId == songId) {
+                    _operation.value = _operation.value.copy(pendingAction = null, pendingSongId = null)
+                }
             }
         }
     }
 
+    fun dismissRenameError() { _operation.value = _operation.value.copy(renameError = null) }
+    fun dismissDeleteError() { _operation.value = _operation.value.copy(deleteError = null) }
+
     fun openSongPreparation(song: ImportedSong) {
+        preparationJob?.cancel()
+        val requestedId = song.id
         _prepState.value = SongPreparationState(
             song = song,
             tracks = emptyList(),
             selectedPracticeMode = PracticeMode.WAIT_FOR_NOTE,
             customBpm = song.defaultBpm,
-            isLoadingTracks = true
+            isLoadingTracks = true,
+            errorMessage = null
         )
-        viewModelScope.launch {
-            val tracks = songRepository.getSongTracks(song.id)
-            _prepState.value = _prepState.value?.copy(
-                tracks = tracks,
-                isLoadingTracks = false
-            )
+        preparationJob = viewModelScope.launch {
+            try {
+                val loaded = withContext(Dispatchers.IO) {
+                    val currentSong = songRepository.getSongById(requestedId) ?: song
+                    val tracks = songRepository.getSongTracks(requestedId)
+                    val resources = currentSong.assets.map {
+                        SongResourceState(it.type, it.originalFileName, File(it.localFilePath).isFile)
+                    }.ifEmpty {
+                        currentSong.localFilePath?.let {
+                            listOf(SongResourceState(com.ian.pianotrainer.domain.model.SongAssetType.MIDI, currentSong.originalFileName, File(it).isFile))
+                        }.orEmpty()
+                    }
+                    Triple(currentSong, tracks, resources)
+                }
+                val current = _prepState.value
+                if (current?.song?.id == requestedId) {
+                    _prepState.value = current.copy(song = loaded.first, tracks = loaded.second, resources = loaded.third, isLoadingTracks = false)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (_prepState.value?.song?.id == requestedId) {
+                    _prepState.value = _prepState.value?.copy(isLoadingTracks = false, errorMessage = errorText("Không thể tải chi tiết bài", error))
+                }
+            }
         }
     }
 
+    fun retrySongPreparation() {
+        val song = _prepState.value?.song ?: return
+        openSongPreparation(song)
+    }
+
     fun closeSongPreparation() {
+        preparationJob?.cancel()
+        preparationJob = null
         _prepState.value = null
     }
 
@@ -249,31 +380,35 @@ class MySongsViewModel(
         val current = _prepState.value ?: return
         val activeTracks = current.tracks.filter { it.isSelectedForPractice }
         if (activeTracks.isEmpty()) {
-            _errorMessage.value = "Hãy chọn ít nhất một track để luyện tập"
+            _prepState.value = current.copy(errorMessage = "Hãy chọn ít nhất một track để luyện tập")
             return
         }
+        if (current.isSaving) return
+        _prepState.value = current.copy(isSaving = true, errorMessage = null)
 
         viewModelScope.launch {
-            songRepository.updateTrackConfigurations(current.song.id, current.tracks)
-            _prepState.value = null
-            // Determine predominant active hand:
-            val hand = when {
-                activeTracks.all { it.assignedHand == "RIGHT" } -> "RIGHT"
-                activeTracks.all { it.assignedHand == "LEFT" } -> "LEFT"
-                else -> "BOTH"
+            try {
+                songRepository.updateTrackConfigurations(current.song.id, current.tracks)
+                val hand = when {
+                    activeTracks.all { it.assignedHand == "RIGHT" } -> "RIGHT"
+                    activeTracks.all { it.assignedHand == "LEFT" } -> "LEFT"
+                    else -> "BOTH"
+                }
+                if (_prepState.value?.song?.id == current.song.id) _prepState.value = null
+                onStart(current.song.displayName, current.song.id, hand, current.selectedPracticeMode, current.customBpm)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _prepState.value?.takeIf { it.song.id == current.song.id }?.let {
+                    _prepState.value = it.copy(isSaving = false, errorMessage = errorText("Không thể lưu cấu hình luyện", error))
+                }
             }
-            onStart(
-                current.song.displayName,
-                current.song.id,
-                hand,
-                current.selectedPracticeMode,
-                current.customBpm
-            )
         }
     }
 
     fun importMidiFromUri(uri: Uri, context: Context, customTitle: String? = null) {
         viewModelScope.launch {
+            if (_isImporting.value) return@launch
             _isImporting.value = true
             _errorMessage.value = null
             _feedbackMessage.value = null
@@ -317,6 +452,8 @@ class MySongsViewModel(
                 }.onFailure { error ->
                     _errorMessage.value = error.localizedMessage ?: "Lỗi khi nhập file MIDI"
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _errorMessage.value = "Lỗi khi xử lý file: ${e.localizedMessage}"
             } finally {
@@ -326,16 +463,19 @@ class MySongsViewModel(
     }
 
     fun downloadSong(urlOrId: String, customTitle: String? = null) {
-        if (onlineSongDownloader == null) {
-            _errorMessage.value = "Chức năng tải bài trực tuyến chưa khả dụng"
+        lastUrlRequest = urlOrId to customTitle
+        val downloader = urlDownloadAction
+        if (downloader == null) {
+            _operation.value = _operation.value.copy(urlError = "Chức năng tải bài trực tuyến chưa khả dụng")
             return
         }
         viewModelScope.launch {
+            if (_isImporting.value) return@launch
             _isImporting.value = true
-            _errorMessage.value = null
+            _operation.value = _operation.value.copy(urlError = null)
             _feedbackMessage.value = null
             try {
-                val result = onlineSongDownloader.downloadAndImport(urlOrId, customTitle)
+                val result = downloader(urlOrId, customTitle)
                 if (result.isSuccess && result.songId != null) {
                     _feedbackMessage.value = "Tải thành công: ${result.title} (${result.noteCount} nốt)"
                     val song = songRepository.getSongById(result.songId)
@@ -343,18 +483,28 @@ class MySongsViewModel(
                         openSongPreparation(song)
                     }
                 } else {
-                    _errorMessage.value = result.errorMessage ?: "Không thể tải bài nhạc từ liên kết"
+                    _operation.value = _operation.value.copy(urlError = result.errorMessage ?: "Không thể tải bài nhạc từ liên kết")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _errorMessage.value = "Lỗi khi tải bài: ${e.localizedMessage}"
+                _operation.value = _operation.value.copy(urlError = errorText("Lỗi khi tải bài", e))
             } finally {
                 _isImporting.value = false
             }
         }
     }
 
+    fun retryUrlImport() {
+        val request = lastUrlRequest ?: return
+        downloadSong(request.first, request.second)
+    }
+
+    fun dismissUrlError() { _operation.value = _operation.value.copy(urlError = null) }
+
     fun downloadCuratedSong(item: CatalogSongItem, context: Context) {
         viewModelScope.launch {
+            if (_isImporting.value) return@launch
             _isImporting.value = true
             _errorMessage.value = null
             _feedbackMessage.value = null
@@ -374,6 +524,8 @@ class MySongsViewModel(
                 } else {
                     _errorMessage.value = result.errorMessage ?: "Không thể tải bài nhạc '${item.title}'"
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _errorMessage.value = "Lỗi khi tải bài: ${e.localizedMessage}"
             } finally {
@@ -388,6 +540,7 @@ class MySongsViewModel(
             return
         }
         viewModelScope.launch {
+            if (_isImporting.value) return@launch
             _isImporting.value = true
             _errorMessage.value = null
             _feedbackMessage.value = null
@@ -408,8 +561,75 @@ class MySongsViewModel(
                 } else {
                     _errorMessage.value = result.errorMessage ?: "Lỗi khi nhập gói bài hát"
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _errorMessage.value = "Lỗi khi xử lý gói: ${e.localizedMessage}"
+            } finally {
+                _isImporting.value = false
+            }
+        }
+    }
+
+    fun importFromUri(uri: Uri, context: Context) {
+        viewModelScope.launch {
+            if (_isImporting.value) return@launch
+            _isImporting.value = true
+            _errorMessage.value = null
+            _feedbackMessage.value = null
+            try {
+                val imported = withContext(Dispatchers.IO) {
+                    val resolver = context.contentResolver
+                    var displayName = "imported.mid"
+                    var fileSize = 0L
+                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let {
+                                displayName = cursor.getString(it) ?: displayName
+                            }
+                            cursor.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 }?.let {
+                                if (!cursor.isNull(it)) fileSize = cursor.getLong(it)
+                            }
+                        }
+                    }
+                    val header = resolver.openInputStream(uri)?.use { input ->
+                        val bytes = ByteArray(8)
+                        val count = input.read(bytes)
+                        if (count > 0) bytes.copyOf(count) else ByteArray(0)
+                    } ?: throw IllegalArgumentException("Không thể mở tệp được chọn.")
+
+                    when (ImportFileClassifier.classify(displayName, resolver.getType(uri), header)) {
+                        ImportFileKind.MIDI -> resolver.openInputStream(uri)?.use { stream ->
+                            songRepository.importMidiFile(stream, displayName, fileSize)
+                        } ?: Result.failure(IllegalArgumentException("Không thể mở tệp MIDI được chọn."))
+                        ImportFileKind.PIANO_PACK -> {
+                            val importer = contentPackImporter
+                                ?: return@withContext Result.failure(IllegalStateException("Chức năng nhập PianoPack chưa khả dụng."))
+                            val pack = resolver.openInputStream(uri)?.use { importer.importPack(it) }
+                                ?: return@withContext Result.failure(IllegalArgumentException("Không thể mở PianoPack được chọn."))
+                            if (!pack.isSuccess || pack.songId == null) {
+                                Result.failure(IllegalArgumentException(pack.errorMessage ?: "PianoPack không hợp lệ."))
+                            } else {
+                                songRepository.getSongById(pack.songId)?.let { Result.success(it) }
+                                    ?: Result.failure(IllegalStateException("Đã nhập file nhưng không đọc được bài vừa lưu."))
+                            }
+                        }
+                        ImportFileKind.UNSUPPORTED -> Result.failure(
+                            IllegalArgumentException("Nội dung tệp không phải MIDI hoặc ZIP/PianoPack hợp lệ. Gói MXL chỉ được nhận khi đi kèm MIDI trong PianoPack.")
+                        )
+                    }
+                }
+                imported.fold(
+                    onSuccess = { song ->
+                        _feedbackMessage.value = "Nhập thành công: " + song.displayName + " (" + song.noteCount + " nốt)"
+                        openSongPreparation(song)
+                    },
+                    onFailure = { throw it }
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _errorMessage.value = error.localizedMessage ?: "Không thể nhập tệp."
             } finally {
                 _isImporting.value = false
             }
@@ -420,6 +640,21 @@ class MySongsViewModel(
         _feedbackMessage.value = null
         _errorMessage.value = null
     }
+
+    fun dismissError() {
+        _errorMessage.value = null
+    }
+
+    fun reportError(message: String) {
+        _errorMessage.value = message
+    }
+
+    private fun showError(prefix: String, error: Throwable) {
+        _errorMessage.value = errorText(prefix, error)
+    }
+
+    private fun errorText(prefix: String, error: Throwable) =
+        prefix + ": " + (error.localizedMessage ?: "lỗi không xác định")
 
     class Factory(
         private val songRepository: SongRepository,

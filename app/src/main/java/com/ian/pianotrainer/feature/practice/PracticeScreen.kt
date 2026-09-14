@@ -26,6 +26,9 @@ import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -35,6 +38,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +51,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ian.pianotrainer.R
 import com.ian.pianotrainer.core.designsystem.PianoAccent
 import com.ian.pianotrainer.core.designsystem.PianoBackground
@@ -63,16 +73,59 @@ import com.ian.pianotrainer.core.ui.PracticeModeSelector
 import com.ian.pianotrainer.core.ui.PrimaryButton
 import com.ian.pianotrainer.core.ui.SectionHeader
 import com.ian.pianotrainer.core.ui.TempoControl
+import com.ian.pianotrainer.core.ui.MetronomeControlPanel
+import com.ian.pianotrainer.domain.service.MetronomeController
+import com.ian.pianotrainer.domain.service.MetronomeSound
 import com.ian.pianotrainer.domain.model.FingerExercise
 import com.ian.pianotrainer.domain.model.HandMode
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PracticeScreen(
     viewModel: PracticeViewModel,
+    metronomeController: MetronomeController,
     onStartPractice: (title: String, sourceType: String, sourceId: String, handMode: String, practiceMode: String, displayMode: String, bpm: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val metroRunning by metronomeController.isRunning.collectAsStateWithLifecycle()
+    val metroBpm by metronomeController.bpm.collectAsStateWithLifecycle()
+    val metroBeat by metronomeController.currentBeat.collectAsStateWithLifecycle()
+    val metroBeats by metronomeController.beatsPerBar.collectAsStateWithLifecycle()
+    val metroAccent by metronomeController.accentEnabled.collectAsStateWithLifecycle()
+    val metroVolume by metronomeController.volume.collectAsStateWithLifecycle()
+    var metroSound by remember { mutableStateOf(metronomeController.getSound()) }
+    var metroOpen by remember { mutableStateOf(false) }
+    val taps = remember { ArrayDeque<Long>() }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) metronomeController.stop() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer); metronomeController.stop() }
+    }
+    if (metroOpen) ModalBottomSheet(onDismissRequest = { metroOpen = false }) {
+        MetronomeControlPanel(
+            running = metroRunning, bpm = metroBpm, currentBeat = metroBeat,
+            beatsPerBar = metroBeats, accentEnabled = metroAccent, sound = metroSound,
+            volume = metroVolume, waitMode = false,
+            onToggle = { if (metroRunning) metronomeController.stop() else metronomeController.start(metroBpm) },
+            onBpm = metronomeController::setBpm,
+            onTap = {
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (taps.isNotEmpty() && now - taps.last() > 2_000L) taps.clear()
+                taps.addLast(now); while (taps.size > 5) taps.removeFirst()
+                val intervals = taps.zipWithNext { a, b -> b - a }.filter { it in 250L..2_000L }
+                if (intervals.isNotEmpty()) metronomeController.setBpm((60_000.0 / intervals.average()).toInt())
+            },
+            onBeats = metronomeController::setBeatsPerBar,
+            onAccent = metronomeController::setAccentEnabled,
+            onSound = { sound -> metronomeController.setSound(sound); metroSound = sound },
+            onVolume = metronomeController::setVolume,
+            onPreview = metronomeController::preview,
+            modifier = Modifier.padding(16.dp)
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -246,6 +299,10 @@ fun PracticeScreen(
                             bpm = uiState.bpm,
                             onBpmChanged = viewModel::setBpm
                         )
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = { metroOpen = true }, modifier = Modifier.fillMaxWidth().testTag("open_metronome")) {
+                            Text("Mở máy đếm nhịp")
+                        }
                     }
                 }
             }

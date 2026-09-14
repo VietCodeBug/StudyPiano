@@ -13,7 +13,8 @@ data class ImportedSong(
     val isFavorite: Boolean = false,
     val trackCount: Int = 1,
     val noteCount: Int = 0,
-    val notes: List<ExerciseNote> = emptyList()
+    val notes: List<ExerciseNote> = emptyList(),
+    val assets: List<SongAsset> = emptyList()
 ) {
     fun formattedDuration(): String {
         val ms = durationMs ?: return "00:00"

@@ -14,10 +14,15 @@ import com.ian.pianotrainer.data.local.database.entity.SongPracticePresetEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTempoEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTimeSignatureEntity
 import com.ian.pianotrainer.data.local.database.entity.SongTrackEntity
+import com.ian.pianotrainer.data.local.database.entity.SongAssetEntity
+import com.ian.pianotrainer.data.local.database.entity.RestoreCommitEntity
 import com.ian.pianotrainer.domain.repository.BackupManifest
 import com.ian.pianotrainer.domain.repository.BackupRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -26,14 +31,27 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+enum class RestoreCheckpoint {
+    FILES_PREPARED,
+    AFTER_PRESERVE_SONGS_RENAME, AFTER_PRESERVE_RECORDINGS_RENAME,
+    AFTER_PROMOTE_SONGS_RENAME, AFTER_PROMOTE_RECORDINGS_RENAME,
+    FILES_SWAPPED, BEFORE_DB_TRANSACTION, AFTER_DB_COMMIT
+}
+fun interface RestoreFaultInjector {
+    fun onCheckpoint(checkpoint: RestoreCheckpoint)
+    companion object { val NONE = RestoreFaultInjector { } }
+}
+
 class BackupRepositoryImpl(
     private val context: Context,
-    private val database: PianoTrainerDatabase
+    private val database: PianoTrainerDatabase,
+    private val faultInjector: RestoreFaultInjector = RestoreFaultInjector.NONE
 ) : BackupRepository {
 
     companion object {
@@ -47,11 +65,12 @@ class BackupRepositoryImpl(
     ): Result<BackupManifest> = withContext(Dispatchers.IO) {
         runCatching {
             val songs = database.importedSongDao().getAllSongsList()
+            val songAssets = songs.flatMap { database.songAssetDao().getAssetsForSong(it.id) }
             val sessions = database.practiceSessionDao().getAllSessionsList()
             val recordings = database.freePlayRecordingDao().getAllRecordingsList()
 
             val manifest = BackupManifest(
-                version = 1,
+                version = 2,
                 appVersion = "2.1.0",
                 createdAt = System.currentTimeMillis(),
                 songCount = songs.size,
@@ -82,6 +101,7 @@ class BackupRepositoryImpl(
                         put("displayName", s.displayName)
                         put("originalFileName", s.originalFileName)
                         put("localFilePath", s.localFilePath ?: "")
+                        put("localRelativePath", s.localFilePath?.let { relativeSongPath(File(it)) } ?: "")
                         put("fileSizeBytes", s.fileSizeBytes ?: 0L)
                         put("fileHashSha256", s.fileHashSha256 ?: "")
                         put("durationMs", s.durationMs ?: 0L)
@@ -99,6 +119,17 @@ class BackupRepositoryImpl(
                     songsArr.put(obj)
                 }
                 writeZipTextEntry(zos, "data/imported_songs.json", songsArr.toString())
+
+                val assetsArr = JSONArray()
+                songAssets.forEach { asset ->
+                    assetsArr.put(JSONObject().apply {
+                        put("id", asset.id); put("songId", asset.songId); put("type", asset.type)
+                        put("originalFileName", asset.originalFileName)
+                        put("localRelativePath", relativeSongPath(File(asset.localFilePath)) ?: "")
+                        put("fileSizeBytes", asset.fileSizeBytes); put("mimeType", asset.mimeType ?: "")
+                    })
+                }
+                writeZipTextEntry(zos, "data/song_assets.json", assetsArr.toString())
 
                 // Presets
                 val presets = database.songPracticePresetDao().getAllPresets()
@@ -255,11 +286,23 @@ class BackupRepositoryImpl(
                 createdAt = manifestJson.optLong("createdAt", System.currentTimeMillis()),
                 songCount = manifestJson.optInt("songCount", 0),
                 sessionCount = manifestJson.optInt("sessionCount", 0),
-                recordingCount = manifestJson.optInt("recordingCount", 0)
+                recordingCount = manifestJson.optInt("recordingCount", 0),
+                includeAudio = manifestJson.optBoolean("includeAudio", true)
             )
+            validateRestorePackage(tempRestoreDir, manifest)
 
-            // Atomic Room database restoration
-            database.withTransaction {
+            SONG_FILE_OPERATION_MUTEX.withLock {
+                recoverPendingRestores()
+                val operationId = UUID.randomUUID().toString()
+                val operationDir = prepareRestoreOperation(tempRestoreDir, operationId)
+                val recovery = RestoreOperationRecovery(context, database)
+                try {
+                    swapRestoreFiles(operationDir, recovery)
+                    faultInjector.onCheckpoint(RestoreCheckpoint.FILES_SWAPPED)
+                    faultInjector.onCheckpoint(RestoreCheckpoint.BEFORE_DB_TRANSACTION)
+
+                    // Atomic Room database restoration
+                    database.withTransaction {
                 // Clear old user data first
                 database.practiceNoteResultDao().clearAll()
                 database.practiceSessionDao().clearAll()
@@ -279,9 +322,9 @@ class BackupRepositoryImpl(
                                 id = obj.getString("id"),
                                 displayName = obj.getString("displayName"),
                                 originalFileName = obj.optString("originalFileName", obj.optString("fileName", "song.mid")),
-                                localFilePath = obj.optString("localFilePath", "").takeIf { it.isNotBlank() },
+                                localFilePath = restoredSongPath(obj, obj.getString("id")),
                                 fileSizeBytes = obj.optLong("fileSizeBytes", 0L),
-                                fileHashSha256 = if (obj.has("fileHashSha256")) obj.getString("fileHashSha256") else null,
+                                fileHashSha256 = obj.optString("fileHashSha256").takeIf { it.isNotBlank() },
                                 durationMs = if (obj.has("durationMs")) obj.getLong("durationMs") else null,
                                 noteCount = obj.optInt("noteCount", 0),
                                 defaultBpm = obj.optInt("defaultBpm", obj.optInt("bpm", 120)),
@@ -297,6 +340,29 @@ class BackupRepositoryImpl(
                         )
                     }
                     database.importedSongDao().insertSongs(songEntities)
+
+                    val assetsFile = File(tempRestoreDir, "data/song_assets.json")
+                    val assetEntities = if (assetsFile.exists()) {
+                        val assets = JSONArray(assetsFile.readText(Charsets.UTF_8))
+                        buildList {
+                            for (j in 0 until assets.length()) {
+                                val a = assets.getJSONObject(j)
+                                val relative = safeRelativeSongPath(a.optString("localRelativePath"))
+                                    ?: throw IOException("Invalid SongAsset relative path in backup")
+                                add(SongAssetEntity(a.getString("id"), a.getString("songId"), a.getString("type"),
+                                    a.getString("originalFileName"), File(context.filesDir, "songs/$relative").absolutePath,
+                                    a.optLong("fileSizeBytes"), a.optString("mimeType").takeIf { it.isNotBlank() }))
+                            }
+                        }
+                    } else {
+                        // Version-1 compatibility: only the standardized source.mid link is unambiguous.
+                        songEntities.mapNotNull { song ->
+                            val midi = File(context.filesDir, "songs/${song.id}/source.mid").takeIf { it.isFile } ?: return@mapNotNull null
+                            SongAssetEntity("${song.id}_midi", song.id, "MIDI", song.originalFileName,
+                                midi.absolutePath, midi.length(), "audio/midi")
+                        }
+                    }
+                    if (assetEntities.isNotEmpty()) database.songAssetDao().insertAssets(assetEntities)
                 }
 
                 // Restore Presets
@@ -390,24 +456,19 @@ class BackupRepositoryImpl(
                         )
                     }
                 }
-            }
-
-            // Restore physical files
-            val stagedSongsDir = File(tempRestoreDir, "files/songs")
-            if (stagedSongsDir.exists()) {
-                val targetSongsDir = File(context.filesDir, "songs")
-                targetSongsDir.mkdirs()
-                stagedSongsDir.copyRecursively(targetSongsDir, overwrite = true)
-            }
-
-            val stagedRecDir = File(tempRestoreDir, "files/recordings")
-            if (stagedRecDir.exists()) {
-                val targetRecDir = File(context.filesDir, "recordings")
-                targetRecDir.mkdirs()
-                stagedRecDir.copyRecursively(targetRecDir, overwrite = true)
+                        database.restoreCommitDao().insert(RestoreCommitEntity(operationId, System.currentTimeMillis()))
+                    }
+                    faultInjector.onCheckpoint(RestoreCheckpoint.AFTER_DB_COMMIT)
+                    recovery.reconcile(operationDir)
+                } catch (error: Throwable) {
+                    withContext(NonCancellable) { recovery.reconcile(operationDir) }
+                    throw error
+                }
             }
 
             Result.success(manifest)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
@@ -420,6 +481,154 @@ class BackupRepositoryImpl(
         zos.putNextEntry(ZipEntry(entryName))
         zos.write(bytes)
         zos.closeEntry()
+    }
+
+    private fun validateRestorePackage(root: File, manifest: BackupManifest): Map<String, String?> {
+        require(manifest.version in 1..2) { "Unsupported backup version ${manifest.version}" }
+        val songsFile = File(root, "data/imported_songs.json")
+        if (!songsFile.isFile) throw IOException("Backup is missing data/imported_songs.json")
+        val songs = JSONArray(songsFile.readText(Charsets.UTF_8))
+        if (songs.length() != manifest.songCount) throw IOException("Backup songCount does not match imported_songs metadata")
+        val ids = mutableSetOf<String>()
+        val expected = linkedMapOf<String, String?>()
+        for (i in 0 until songs.length()) {
+            val song = songs.getJSONObject(i)
+            val id = song.getString("id").takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,80}")) }
+                ?: throw IOException("Invalid song id in backup")
+            if (!ids.add(id)) throw IOException("Duplicate song id '$id' in backup")
+            song.getString("displayName"); song.getLong("importedAt")
+            expected[id] = song.optString("fileHashSha256").takeIf { it.isNotBlank() }
+        }
+        listOf("practice_presets.json", "practice_sessions.json", "freeplay_recordings.json").forEach { name ->
+            File(root, "data/$name").takeIf { it.exists() }?.let { JSONArray(it.readText(Charsets.UTF_8)) }
+        }
+
+        val stagedSongs = File(root, "files/songs")
+        if (manifest.version >= 2) {
+            val assetsFile = File(root, "data/song_assets.json")
+            if (!assetsFile.isFile) throw IOException("Backup v2 is missing data/song_assets.json")
+            val assets = JSONArray(assetsFile.readText(Charsets.UTF_8))
+            val typesBySong = mutableMapOf<String, MutableSet<String>>()
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val songId = asset.getString("songId")
+                if (songId !in ids) throw IOException("SongAsset references unknown song '$songId'")
+                val relative = safeRelativeSongPath(asset.getString("localRelativePath"))
+                    ?: throw IOException("Invalid SongAsset relative path")
+                if (!relative.startsWith("$songId/")) throw IOException("SongAsset path is outside its song folder: '$relative'")
+                val type = asset.getString("type")
+                if (!typesBySong.getOrPut(songId) { mutableSetOf() }.add(type)) throw IOException("Duplicate SongAsset type '$type' for '$songId'")
+                val staged = File(stagedSongs, relative).canonicalFile
+                if (!staged.isFile || !staged.path.startsWith(stagedSongs.canonicalPath + File.separator)) {
+                    throw IOException("Backup v2 is missing declared SongAsset file '$relative'")
+                }
+                if (staged.length() != asset.getLong("fileSizeBytes")) throw IOException("SongAsset size mismatch for '$relative'")
+            }
+            ids.forEach { id -> if (typesBySong[id]?.contains("MIDI") != true) throw IOException("Backup v2 song '$id' has no MIDI asset metadata") }
+        } else {
+            for (i in 0 until songs.length()) {
+                val song = songs.getJSONObject(i); val id = song.getString("id")
+                if (song.optString("localFilePath").isNotBlank() && !File(stagedSongs, "$id/source.mid").isFile) {
+                    throw IOException("Backup v1 is missing MIDI file for '$id'")
+                }
+            }
+        }
+        expected.forEach { (id, hash) ->
+            if (hash != null) {
+                val midi = if (manifest.version >= 2) {
+                    val assets = JSONArray(File(root, "data/song_assets.json").readText(Charsets.UTF_8))
+                    (0 until assets.length()).asSequence().map { assets.getJSONObject(it) }
+                        .first { it.getString("songId") == id && it.getString("type") == "MIDI" }
+                        .getString("localRelativePath").let { File(stagedSongs, it) }
+                } else File(stagedSongs, "$id/source.mid")
+                if (sha256(midi) != hash.lowercase()) throw IOException("MIDI hash mismatch for '$id'")
+            }
+        }
+        return expected
+    }
+
+    private fun prepareRestoreOperation(staging: File, operationId: String): File {
+        val op = File(context.filesDir, "song_operations/restore_${UUID.randomUUID()}").apply { mkdirs() }
+        try {
+            val newSongs = File(op, "newSongs").apply { mkdirs() }
+            val newRecordings = File(op, "newRecordings").apply { mkdirs() }
+            if (File(staging, "files/songs").exists() && !File(staging, "files/songs").copyRecursively(newSongs, overwrite = false)) {
+                throw IOException("Failed to stage restored song files")
+            }
+            if (File(staging, "files/recordings").exists() && !File(staging, "files/recordings").copyRecursively(newRecordings, overwrite = false)) {
+                throw IOException("Failed to stage restored recording files")
+            }
+            RestoreOperationRecovery(context, database).create(
+                op, operationId,
+                hadSongs = File(context.filesDir, "songs").exists(),
+                oldSongsDigest = RestoreOperationRecovery.treeDigest(File(context.filesDir, "songs")),
+                newSongsDigest = RestoreOperationRecovery.treeDigest(newSongs),
+                hadRecordings = File(context.filesDir, "recordings").exists(),
+                oldRecordingsDigest = RestoreOperationRecovery.treeDigest(File(context.filesDir, "recordings")),
+                newRecordingsDigest = RestoreOperationRecovery.treeDigest(newRecordings)
+            )
+            faultInjector.onCheckpoint(RestoreCheckpoint.FILES_PREPARED)
+            return op
+        } catch (error: Throwable) {
+            op.deleteRecursively()
+            throw error
+        }
+    }
+
+    private fun swapRestoreFiles(op: File, recovery: RestoreOperationRecovery) {
+        val songs = File(context.filesDir, "songs")
+        val recordings = File(context.filesDir, "recordings")
+        recovery.writeState(op, RestoreJournalState.PRESERVE_SONGS_INTENT)
+        if (songs.exists() && !songs.renameTo(File(op, "oldSongs"))) throw IOException("Failed to preserve current song files")
+        faultInjector.onCheckpoint(RestoreCheckpoint.AFTER_PRESERVE_SONGS_RENAME)
+        recovery.writeState(op, RestoreJournalState.PRESERVE_SONGS_DONE)
+
+        recovery.writeState(op, RestoreJournalState.PRESERVE_RECORDINGS_INTENT)
+        if (recordings.exists() && !recordings.renameTo(File(op, "oldRecordings"))) throw IOException("Failed to preserve current recording files")
+        faultInjector.onCheckpoint(RestoreCheckpoint.AFTER_PRESERVE_RECORDINGS_RENAME)
+        recovery.writeState(op, RestoreJournalState.PRESERVE_RECORDINGS_DONE)
+
+        recovery.writeState(op, RestoreJournalState.PROMOTE_SONGS_INTENT)
+        if (!File(op, "newSongs").renameTo(songs)) throw IOException("Failed to promote restored song files")
+        faultInjector.onCheckpoint(RestoreCheckpoint.AFTER_PROMOTE_SONGS_RENAME)
+        recovery.writeState(op, RestoreJournalState.PROMOTE_SONGS_DONE)
+
+        recovery.writeState(op, RestoreJournalState.PROMOTE_RECORDINGS_INTENT)
+        if (!File(op, "newRecordings").renameTo(recordings)) throw IOException("Failed to promote restored recording files")
+        faultInjector.onCheckpoint(RestoreCheckpoint.AFTER_PROMOTE_RECORDINGS_RENAME)
+        recovery.writeState(op, RestoreJournalState.PROMOTE_RECORDINGS_DONE)
+        recovery.writeState(op, RestoreJournalState.FILES_SWAPPED)
+    }
+
+    private suspend fun recoverPendingRestores() {
+        File(context.filesDir, "song_operations").listFiles().orEmpty()
+            .filter { it.isDirectory && it.name.startsWith("restore_") }
+            .forEach { RestoreOperationRecovery(context, database).reconcile(it) }
+    }
+
+    private fun sha256(file: File): String = file.inputStream().use { input ->
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(64 * 1024)
+        while (true) { val read = input.read(buffer); if (read < 0) break; digest.update(buffer, 0, read) }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun relativeSongPath(file: File): String? {
+        val root = File(context.filesDir, "songs").canonicalFile
+        val candidate = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        return candidate.takeIf { it.path.startsWith(root.path + File.separator) }
+            ?.relativeTo(root)?.path?.replace('\\', '/')
+    }
+
+    private fun safeRelativeSongPath(raw: String): String? {
+        val clean = raw.replace('\\', '/').trim('/')
+        return clean.takeIf { it.isNotBlank() && it.split('/').none { part -> part.isBlank() || part == ".." } && !Regex("^[A-Za-z]:").containsMatchIn(raw) }
+    }
+
+    private fun restoredSongPath(obj: JSONObject, songId: String): String? {
+        val relative = safeRelativeSongPath(obj.optString("localRelativePath"))
+            ?: "${songId}/source.mid".takeIf { File(context.filesDir, "songs/$it").isFile }
+        return relative?.let { File(context.filesDir, "songs/$it").absolutePath }
     }
 
     private fun writeZipFileEntry(zos: ZipOutputStream, entryName: String, file: File) {

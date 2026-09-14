@@ -1,15 +1,15 @@
 package com.ian.pianotrainer.domain.service
 
 import java.io.InputStream
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 enum class MetronomeSound(val displayName: String) {
-    WOOD("Gõ gỗ"),
-    MECHANICAL("Máy cơ"),
-    SOFT("Nhẹ"),
-    DIGITAL("Điện tử"),
-    CUSTOM("Âm tùy chỉnh");
+    WOOD("G\u00f5 g\u1ed7"),
+    MECHANICAL("M\u00e1y c\u01a1"),
+    SOFT("Nh\u1eb9"),
+    DIGITAL("\u0110i\u1ec7n t\u1eed"),
+    CUSTOM("\u00c2m t\u00f9y ch\u1ec9nh");
 
     companion object {
         val builtIns = listOf(MECHANICAL, WOOD)

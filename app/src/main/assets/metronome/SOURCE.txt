@@ -1,7 +1,8 @@
 StudyPiano built-in metronome sounds
 
-The “Máy cơ” and “Gõ gỗ” PCM samples are generated locally by
-RealMetronomeController from original synthesis parameters written for this
-project. They contain no third-party recording and require no network access.
-They are pre-rendered once when the controller is initialized and reused for
-every beat. No external license attribution is required.
+The built-in sounds named "May co" (Mechanical metronome) and "Go go"
+(Wood tap) are generated locally by RealMetronomeController from original
+synthesis parameters written for this project. They contain no third-party
+recording, require no network access, and are pre-rendered once when the
+controller is initialized before playback. No external license attribution is
+required.

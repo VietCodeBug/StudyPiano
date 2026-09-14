@@ -276,9 +276,9 @@ class RealMetronomeController(
     }
 
     override suspend fun importCustomSound(input: InputStream, fileName: String): Result<Unit> = runCatching {
-        val appContext = context ?: error("Không thể lưu âm thanh trên thiết bị này")
+        val appContext = context ?: error("Kh\u00f4ng th\u1ec3 l\u01b0u \u00e2m thanh tr\u00ean thi\u1ebft b\u1ecb n\u00e0y")
         val extension = fileName.substringAfterLast('.', "wav").lowercase()
-        require(extension in setOf("wav", "mp3", "ogg")) { "Chỉ hỗ trợ WAV, MP3 hoặc OGG" }
+        require(extension in setOf("wav", "mp3", "ogg")) { "Ch\u1ec9 h\u1ed7 tr\u1ee3 WAV, MP3 ho\u1eb7c OGG" }
         val directory = File(appContext.filesDir, "metronome").apply { mkdirs() }
         val target = File(directory, "incoming_click.$extension")
         target.outputStream().use { output ->
@@ -288,10 +288,10 @@ class RealMetronomeController(
                 val count = input.read(buffer)
                 if (count < 0) break
                 total += count
-                require(total <= 2L * 1024L * 1024L) { "Âm metronome phải nhỏ hơn 2 MB" }
+                require(total <= 2L * 1024L * 1024L) { "\u00c2m metronome ph\u1ea3i nh\u1ecf h\u01a1n 2 MB" }
                 output.write(buffer, 0, count)
             }
-            require(total > 0L) { "Tệp âm thanh bị rỗng" }
+            require(total > 0L) { "T\u1ec7p \u00e2m thanh b\u1ecb r\u1ed7ng" }
         }
         val durationMs = MediaMetadataRetriever().let { retriever ->
             try {
@@ -301,14 +301,14 @@ class RealMetronomeController(
                 retriever.release()
             }
         }
-        require(durationMs in 1L..2000L) { "Hãy chọn tiếng click ngắn hơn 2 giây" }
+        require(durationMs in 1L..2000L) { "H\u00e3y ch\u1ecdn ti\u1ebfng click ng\u1eafn h\u01a1n 2 gi\u00e2y" }
         directory.listFiles()?.filter { it.name.startsWith("custom_click.") }?.forEach { it.delete() }
         val finalTarget = File(directory, "custom_click.$extension")
-        require(target.renameTo(finalTarget)) { "Không thể lưu tệp âm thanh" }
+        require(target.renameTo(finalTarget)) { "Kh\u00f4ng th\u1ec3 l\u01b0u t\u1ec7p \u00e2m thanh" }
         customSoundId.takeIf { it != 0 }?.let { soundPool?.unload(it) }
         previewCustomWhenLoaded = true
         customSoundId = soundPool?.load(finalTarget.absolutePath, 1) ?: 0
-        require(customSoundId != 0) { "Thiết bị không đọc được tệp âm thanh này" }
+        require(customSoundId != 0) { "Thi\u1ebft b\u1ecb kh\u00f4ng \u0111\u1ecdc \u0111\u01b0\u1ee3c t\u1ec7p \u00e2m thanh n\u00e0y" }
         customSoundName = fileName
         selectedSound = MetronomeSound.CUSTOM
         preferences?.edit()
